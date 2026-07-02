@@ -1,0 +1,338 @@
+-- // ESKİ MENÜLERİ TEMİZLE
+for _, v in pairs(game:GetService("CoreGui"):GetChildren()) do
+    if v.Name == "Rayfield" then v:Destroy() end
+end
+
+-- // GLOBAL AYARLAR
+_G.OrbFarm = false
+_G.AutoClick = false
+_G.AutoRebirth = false
+_G.AutoCrate = false
+_G.SelectedCrateType = "skin, weapon" -- Varsayılan olarak kostüm seçili
+_G.tpspeed = 0.4 
+
+local plr = game.Players.LocalPlayer
+local ts = game:GetService("TweenService")
+local rs = game:GetService("ReplicatedStorage")
+local hrp = plr.Character and plr.Character:WaitForChild("HumanoidRootPart", 10)
+
+local alive = false
+local function oncharadded(character)
+    hrp = character:WaitForChild("HumanoidRootPart", 10)
+    local human = character:WaitForChild("Humanoid", 10)
+    if human then
+        alive = true
+        human.Died:Connect(function() alive = false end)
+    end
+end
+if plr.Character then oncharadded(plr.Character) end
+plr.CharacterAdded:Connect(oncharadded)
+
+-- // RAYFIELD KÜTÜPHANESİNİ YÜKLE
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "Giant Simulator",
+   Icon = 0,
+   LoadingTitle = "Script is loading",
+   LoadingSubtitle = "by kainatbozan",
+   ShowText = "Rayfield",
+   Theme = "Default",
+   ToggleUIKeybind = "K",
+   DisableRayfieldPrompts = true,
+   DisableBuildWarnings = true,
+   ConfigurationSaving = { Enabled = false },
+   Discord = { Enabled = false },
+   KeySystem = false
+})
+
+-- // SEKMELER
+local MainTab = Window:CreateTab("Main", 4483362458)
+local CratesTab = Window:CreateTab("Creates", 4483362458)
+local EggsTab = Window:CreateTab("Eggs", 4483362458)
+local QuestTab = Window:CreateTab("Quest", 4483362458)
+
+-- // 1. SEKME ELEMANLARI (ANA ÖZELLİKLER)
+MainTab:CreateToggle({
+   Name = "Orb Farm",
+   CurrentValue = false,
+   Flag = "OrbToggleV12",
+   Callback = function(Value) _G.OrbFarm = Value end,
+})
+
+MainTab:CreateToggle({
+   Name = "AutoClick(no animation)",
+   CurrentValue = false,
+   Flag = "ClickToggleV12",
+   Callback = function(Value) _G.AutoClick = Value end,
+ })
+
+MainTab:CreateToggle({
+   Name = "AutoRebirth (need 100 level)",
+   CurrentValue = false,
+   Flag = "RebirthToggleV12",
+   Callback = function(Value) _G.AutoRebirth = Value end,
+})
+
+-- // 2. SEKME ELEMANLARI (KILIÇ & KOSTÜM LİSTESİ)
+CratesTab:CreateDropdown({
+   Name = "Select Crate Type",
+   Options = {"Legendary Skin (Kostüm)", "Legendary Weapon (Kılıç)"},
+   CurrentOption = {"Legendary Skin (Kostüm)"},
+   MultipleOptions = false,
+   Flag = "CrateTypeDropdownV12",
+   Callback = function(Option)
+      -- Listeden seçilene göre sunucuya gidecek parametreyi değiştiriyoruz
+      if Option[1] == "Legendary Skin (100K)" then
+          _G.SelectedCrateType = "skin"
+      elseif Option[1] == "Legendary Weapon (100K)" then
+          _G.SelectedCrateType = "weapon"
+      end
+   end,
+})
+
+CratesTab:CreateToggle({
+   Name = "Open Chest",
+   CurrentValue = false,
+   Flag = "CrateToggleV12",
+   Callback = function(Value) _G.AutoCrate = Value end,
+})
+
+
+local ButunSandiklar = {
+    "t1_skin_crate", 
+    "t2_skin_crate",
+    "t3_skin_crate", 
+    "t1_wpn_crate", 
+    "t2_wpn_crate",
+    "t3_wpn_crate"
+}
+
+CratesTab:CreateButton({
+   Name = "Sell All Create",
+   Callback = function()
+      for _, tur in pairs(ButunSandiklar) do
+          pcall(function()
+              local args = { tur }
+              game:GetService("ReplicatedStorage"):WaitForChild("Aero"):WaitForChild("AeroRemoteServices"):WaitForChild("GameService"):WaitForChild("SellAllCratesRequest"):InvokeServer(unpack(args))
+          end)
+          task.wait(0.1)
+      end
+   end,
+})
+
+EggsTab:CreateToggle({
+   Name = "Auto Open Event Eggs",
+   CurrentValue = false,
+   Flag = "EventEggToggle",
+   Callback = function(Value)
+      _G.AutoEventEggs = Value
+   end,
+})
+
+EggsTab:CreateToggle({
+   Name = "Auto Open Artifact Create",
+   CurrentValue = false,
+   Flag = "EventArtifactToogle",
+   Callback = function(Value)
+      _G.AutoEventArtifact = Value
+   end,
+})
+
+QuestTab:CreateToggle({
+   Name = "Auto Boss Kill (Demon King)(not working)",
+   CurrentValue = false,
+   Flag = "AutoAttackToggle",
+   Callback = function(Value)
+      _G.AutoBoss = Value
+   end,
+})
+------------------------------------------- ARKA PLAN -------------------------------------------
+
+-- animasyonsuz vurus
+task.spawn(function()
+    while true do
+        task.wait(0.01)
+        if _G.AutoClick and alive then
+            pcall(function()
+                local AeroRemotes = rs:FindFirstChild("Aero") and rs.Aero:FindFirstChild("AeroRemoteServices")
+                local GameService = AeroRemotes and AeroRemotes:FindFirstChild("GameService")
+                if GameService then
+                    if GameService:FindFirstChild("WeaponAnimComplete") and GameService:FindFirstChild("WeaponAttackStart") then
+                        GameService.WeaponAnimComplete:FireServer()
+                        GameService.WeaponAttackStart:FireServer()
+                    end
+                end
+                local combatEvent = rs:FindFirstChild("CombatEvent") or (rs:FindFirstChild("Events") and rs.Events:FindFirstChild("CombatEvent"))
+                if combatEvent then combatEvent:FireServer("Attack") end
+            end)
+        end
+    end
+end)
+
+-- oto rebirth
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if _G.AutoRebirth and alive then
+            pcall(function()
+                local AeroRemotes = rs:FindFirstChild("Aero") and rs.Aero:FindFirstChild("AeroRemoteServices")
+                local GameService = AeroRemotes and AeroRemotes:FindFirstChild("GameService")
+                if GameService and GameService:FindFirstChild("RebirthRequest") then
+                    GameService.RebirthRequest:InvokeServer()
+                end
+            end)
+        end
+    end
+end)
+
+-- oto sandık açma
+task.spawn(function()
+    while true do
+        task.wait(0.3)
+        if _G.AutoCrate then
+            pcall(function()
+                local AeroRemotes = rs:FindFirstChild("Aero") and rs.Aero:FindFirstChild("AeroRemoteServices")
+                local GameService = AeroRemotes and AeroRemotes:FindFirstChild("GameService")
+                
+                if GameService and GameService:FindFirstChild("OpenLegendaryCrate") then
+                    GameService.OpenLegendaryCrate:InvokeServer(_G.SelectedCrateType, 1)
+                end
+            end)
+        end
+    end
+end)
+
+-- event yumurta
+task.spawn(function()
+    while true do
+        task.wait(0.3)
+        if _G.AutoEventEggs then
+            pcall(function()
+                local args = { 6, 1 }
+                game:GetService("ReplicatedStorage"):WaitForChild("Aero"):WaitForChild("AeroRemoteServices"):WaitForChild("GameService"):WaitForChild("OpenPetCrate"):InvokeServer(unpack(args))
+            end)
+        end
+    end
+end)
+
+-- Demon boss 
+-- // 2. ADIM: HEDEF BULMA VE İMHA MOTORU
+-- // GÜVENLİ VURUŞ MOTORU (DİBİNE GİRMEDEN)
+task.spawn(function()
+    while true do
+        task.wait(0.3)
+        if _G.AutoAttack and alive and hrp then
+            pcall(function()
+                local npcFolder = workspace:FindFirstChild("NPC")
+                local bossModel = npcFolder and npcFolder:FindFirstChild("DemonKing")
+                
+                -- 1. KILIÇ KONTROLÜ (En önemli kısım)
+                local tool = plr.Character:FindFirstChildOfClass("Tool")
+                if not tool then
+                    warn("Elinde kılıç yok! Vuruş işlemez.")
+                    return -- Elinde kılıç yoksa döngüyü durdur
+                end
+                
+                -- 2. HEDEF KONTROLÜ
+                local bossHRP = bossModel and bossModel:FindFirstChild("HumanoidRootPart")
+                local hitPart = bossModel and bossModel:FindFirstChild("DemonKing") and bossModel.DemonKing:FindFirstChild("LeftUpperLeg")
+                
+                if bossHRP and hitPart then
+                    -- 3. KONUMLANMA (İçine girme, 3 birim önüne geç)
+                    hrp.CFrame = CFrame.lookAt(hrp.Position, bossHRP.Position)
+                    local dist = (hrp.Position - bossHRP.Position).Magnitude
+                    if dist > 6 then
+                        hrp.CFrame = CFrame.lookAt(bossHRP.Position + (bossHRP.CFrame.LookVector * 5), bossHRP.Position)
+                    end
+                    
+                    -- 4. VURUŞ ZORLAMA
+                    -- Önce kılıcı "Activate" et
+                    tool:Activate()
+                    
+                    -- Ardından remote'ları tetikle
+                    local gs = rs.Aero.AeroRemoteServices.GameService
+                    gs.WeaponAttackStart:FireServer()
+                    gs.MeleeHit:FireServer(hitPart)
+                    gs.WeaponAnimComplete:FireServer()
+                    
+                    print("Vuruş gönderildi: " .. tool.Name)
+                end
+            end)
+        end
+    end
+end)
+
+-- event artifact
+task.spawn(function()
+    while true do
+        task.wait(0.3)
+        if _G.AutoEventArtifact then
+            pcall(function()
+                local args = { 4, 1 }
+                game:GetService("ReplicatedStorage"):WaitForChild("Aero"):WaitForChild("AeroRemoteServices"):WaitForChild("GameService"):WaitForChild("OpenArtifactCrate"):InvokeServer(unpack(args))
+            end)
+        end
+    end
+end)
+-- orba gitmek
+local function tweenTo(targetCFrame, speed)
+    if not hrp or not alive then return end
+    local info = TweenInfo.new(speed, Enum.EasingStyle.Linear)
+    local tween = ts:Create(hrp, info, {CFrame = targetCFrame})
+    tween:Play()
+    tween.Completed:Wait()
+end
+
+-- orb kontrol
+local function getClosestOrb()
+    if not hrp or not alive then return nil end
+    local closestOrb = nil
+    local shortestDistance = math.huge
+
+    local scene = workspace:FindFirstChild("Scene")
+    local orbFolder = scene and (scene:FindFirstChild("ResourceNodes1") or scene:FindFirstChild("ResourceNodes"))
+    
+    if orbFolder then
+        for _, v in ipairs(orbFolder:GetChildren()) do
+            if (v:IsA("Part") or v:IsA("MeshPart") or v:IsA("BasePart")) and v:FindFirstChild("Prefab") then
+                local distance = (hrp.Position - v.Position).Magnitude
+                if distance < shortestDistance then
+                    shortestDistance = distance
+                    closestOrb = v
+                end
+            end
+        end
+    end
+    return closestOrb
+end
+
+-- orb farm
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if _G.OrbFarm then
+            if not alive then repeat task.wait(1) until alive end
+            while _G.OrbFarm and alive do
+                local targetOrb = getClosestOrb()
+                if not targetOrb or not targetOrb.Parent then break end
+                
+                tweenTo(targetOrb.CFrame, _G.tpspeed)
+                if hrp then hrp.Velocity = Vector3.new(0,0,0) end
+                
+                local timeout = 0
+                while targetOrb and targetOrb.Parent and timeout < 0.15 and alive do
+                    task.wait(0.02)
+                    timeout = timeout + 0.02
+                end
+            end
+        end
+    end
+end)
+
+Rayfield:Notify({
+   Title = "Hibrid Sistem Yüklendi",
+   Content = "Listeden kılıç veya kostüm seçip hemen açmaya başlayabilirsin.",
+   Duration = 5,
+   Image = 4483362458,
+})
