@@ -221,22 +221,27 @@ task.spawn(function()
     end
 end)
 
--- // GİZLİ ROBLOX SERVİSLERİNİ TANIMLA
-local VirtualUser = game:GetService("VirtualUser")
+------------------------------------------- ARKA PLAN -------------------------------------------
 
--- [Kainatbozan Ekstra] ANTI-AFK SİSTEMİ: Gece boyu kasılırken oyundan atılmanı engeller
-pcall(function()
-    plr.Idled:Connect(function()
-        VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
-        task.wait(0.5)
-        VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
-    end)
-end)
+-- // [Kainatbozan] DERİN BOSS BULUCU FONKSİYONU
+local function derindenBossBul()
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("Model") and (v.Name:lower():match("demon") or v.Name:lower():match("king")) then
+            local hum = v:FindFirstChildOfClass("Humanoid")
+            local bHrp = v:FindFirstChild("HumanoidRootPart")
+            if hum and bHrp and hum.Health > 0 then
+                return v, bHrp, hum
+            end
+        end
+    end
+    return nil, nil, nil
+end
 
--- // MAUSE SERBEST - SIZMA TESTLİ OTO TIKLAYICI
+
+-- // 1. MAUSE SERBEST OTO TIKLAYICI MOTORU
 task.spawn(function()
     while true do
-        task.wait(0.03) -- Tıklama hızı (0.03 saniye ban riskini sıfırlar ve aşırı seridir)
+        task.wait(0.04) -- Hem çok seri hem de anti-cheat'e takılmayacak en ideal süre
         
         if _G.AutoClick then
             local karakter = plr.Character
@@ -244,7 +249,7 @@ task.spawn(function()
             
             if karakter and benimHuman and benimHuman.Health > 0 then
                 pcall(function()
-                    -- 1. OTO-KILIÇ KUŞANMA SİSTEMİ
+                    -- Kılıç Kuşanma Kontrolü (Elde yoksa çantadan otomatik alır)
                     local tool = karakter:FindFirstChildOfClass("Tool")
                     if not tool then
                         local sirtindakiKilic = plr.Backpack:FindFirstChildOfClass("Tool")
@@ -254,18 +259,85 @@ task.spawn(function()
                         end
                     end
                     
-                    -- 2. VIRTUAL USER CORE TIKLAMA MOTORU
+                    -- Vuruş İsteklerini Sunucuya Gönderme (Mause imlecine dokunmaz)
                     if tool then
-                        -- Karakterin kılıcı yerel olarak sallamasını tetikle
-                        tool:Activate()
+                        tool:Activate() -- Kılıcı salla
                         
-                        -- Roblox oyun kontrolcüsünü ele geçir (Sanal olarak)
-                        VirtualUser:CaptureController()
-                        -- Ekranın sol üst (0,0) noktasına farenin sol tıkını basıp bırakır
-                        -- Gerçek Windows imlecinizi ASLA etkilemez, arka planda çalışır.
-                        VirtualUser:ClickButton1(Vector2.new(0, 0))
+                        local AeroRemotes = rs:FindFirstChild("Aero") and rs.Aero:FindFirstChild("AeroRemoteServices")
+                        local gameService = AeroRemotes and AeroRemotes:FindFirstChild("GameService")
+                        if gameService then
+                            gameService.WeaponAnimComplete:FireServer()
+                            gameService.WeaponAttackStart:FireServer()
+                        end
+                        
+                        local combatEvent = rs:FindFirstChild("CombatEvent") or (rs:FindFirstChild("Events") and rs.Events:FindFirstChild("CombatEvent"))
+                        if combatEvent then 
+                            combatEvent:FireServer("Attack") 
+                        end
                     end
                 end)
+            end
+        end
+    end
+end)
+
+
+-- // 2. ULTRASÖNİK BOSS IŞINLANMA VE KESME MOTORU
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        
+        if _G.AutoBoss then
+            local karakter = plr.Character
+            local benimHrp = karakter and karakter:FindFirstChild("HumanoidRootPart")
+            local benimHuman = karakter and karakter:FindFirstChildOfClass("Humanoid")
+            
+            if karakter and benimHrp and benimHuman and benimHuman.Health > 0 then
+                pcall(function()
+                    local bossModel, bossHRP, bossHumanoid = derindenBossBul()
+                    
+                    if bossModel and bossHRP and bossHumanoid then
+                        -- Boss'un kafasının 5 birim yukarısına ışınlan ve havada sabitle
+                        benimHrp.Anchored = false
+                        benimHrp.CFrame = bossHRP.CFrame * CFrame.new(0, 5, 0)
+                        benimHrp.Velocity = Vector3.new(0, 0, 0)
+                        benimHrp.Anchored = true
+                        
+                        -- Boss'a vururken kılıcı kuşan
+                        local tool = karakter:FindFirstChildOfClass("Tool")
+                        if not tool then
+                            local sirtindakiKilic = plr.Backpack:FindFirstChildOfClass("Tool")
+                            if sirtindakiKilic then
+                                sirtindakiKilic.Parent = karakter
+                                tool = sirtindakiKilic
+                            end
+                        end
+                        
+                        -- Doğrudan Boss'un gövdesine hasar remote'u fırlatır
+                        if tool then
+                            tool:Activate()
+                            local AeroRemotes = rs:FindFirstChild("Aero") and rs.Aero:FindFirstChild("AeroRemoteServices")
+                            local gameService = AeroRemotes and AeroRemotes:FindFirstChild("GameService")
+                            if gameService then
+                                gameService.WeaponAttackStart:FireServer()
+                                gameService.MeleeHit:FireServer(bossHRP)
+                                gameService.WeaponAnimComplete:FireServer()
+                            end
+                        end
+                    else
+                        -- Boss yoksa veya öldüyse karakterin donmasını çöz (Yere düşebilmek için)
+                        if benimHrp.Anchored then 
+                            benimHrp.Anchored = false 
+                        end
+                    end
+                end)
+            end
+        else
+            -- Menüden boss farmı kapatılırsa karakter sabitlemeyi anında kaldır
+            local karakter = plr.Character
+            local benimHrp = karakter and karakter:FindFirstChild("HumanoidRootPart")
+            if benimHrp and benimHrp.Anchored then
+                benimHrp.Anchored = false
             end
         end
     end
