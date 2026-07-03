@@ -141,11 +141,15 @@ EggsTab:CreateToggle({
 })
 
 QuestTab:CreateToggle({
-   Name = "Auto Boss Kill (Demon King)(not working)",
+   Name = "Auto Boss Kill (Demon King)",
    CurrentValue = false,
-   Flag = "AutoAttackToggle",
+   Flag = "AutoBossToggleV12",
    Callback = function(Value)
       _G.AutoBoss = Value
+      -- Eğer hile kapatılırsa karakterin donmasını anında çözelim
+      if not Value and hrp then
+          hrp.Anchored = false
+      end
    end,
 })
 ------------------------------------------- ARKA PLAN -------------------------------------------
@@ -217,49 +221,51 @@ task.spawn(function()
     end
 end)
 
--- Demon boss 
--- // 2. ADIM: HEDEF BULMA VE İMHA MOTORU
--- // GÜVENLİ VURUŞ MOTORU (DİBİNE GİRMEDEN)
+-- Demon boss (Gövdeye Işınlanma + Sabitleme + Vuruş Motoru)
 task.spawn(function()
     while true do
-        task.wait(0.3)
-        if _G.AutoAttack and alive and hrp then
+        task.wait(0.1) -- Boss'a anlık yapışabilmek için bekleme süresini düşürdük
+        
+        if _G.AutoBoss and alive and hrp then
             pcall(function()
                 local npcFolder = workspace:FindFirstChild("NPC")
                 local bossModel = npcFolder and npcFolder:FindFirstChild("DemonKing")
-                
-                -- 1. KILIÇ KONTROLÜ (En önemli kısım)
-                local tool = plr.Character:FindFirstChildOfClass("Tool")
-                if not tool then
-                    warn("Elinde kılıç yok! Vuruş işlemez.")
-                    return -- Elinde kılıç yoksa döngüyü durdur
-                end
-                
-                -- 2. HEDEF KONTROLÜ
                 local bossHRP = bossModel and bossModel:FindFirstChild("HumanoidRootPart")
-                local hitPart = bossModel and bossModel:FindFirstChild("DemonKing") and bossModel.DemonKing:FindFirstChild("LeftUpperLeg")
+                local bossHumanoid = bossModel and bossModel:FindFirstChildOfClass("Humanoid")
                 
-                if bossHRP and hitPart then
-                    -- 3. KONUMLANMA (İçine girme, 3 birim önüne geç)
-                    hrp.CFrame = CFrame.lookAt(hrp.Position, bossHRP.Position)
-                    local dist = (hrp.Position - bossHRP.Position).Magnitude
-                    if dist > 6 then
-                        hrp.CFrame = CFrame.lookAt(bossHRP.Position + (bossHRP.CFrame.LookVector * 5), bossHRP.Position)
+                -- Boss yaşıyorsa ve haritada varsa işlemleri başlat
+                if bossHRP and bossHumanoid and bossHumanoid.Health > 0 then
+                    -- 1. GÖVDEYE IŞINLAN VE KARAKTERİ DONDUR
+                    -- Boss'un tam gövde merkezinin 2 birim yukarısına sabitler (yerin altına düşmeyi engeller)
+                    hrp.CFrame = bossHRP.CFrame * CFrame.new(0, 2, 0)
+                    hrp.Anchored = true
+                    hrp.Velocity = Vector3.new(0, 0, 0) -- Fiziksel hızlanmaları sıfırla
+                    
+                    -- 2. KILIÇ KONTROLÜ VE OTOMATİK VURUŞ
+                    local tool = plr.Character:FindFirstChildOfClass("Tool")
+                    if tool then
+                        tool:Activate() -- Kılıcı salla
+                        
+                        -- Uzaktan sunucuya hasar bilgisini gönder
+                        local gs = rs.Aero.AeroRemoteServices.GameService
+                        if gs then
+                            gs.WeaponAttackStart:FireServer()
+                            gs.MeleeHit:FireServer(bossHRP) -- Hasarı direkt boss'un gövdesine vurur
+                            gs.WeaponAnimComplete:FireServer()
+                        end
                     end
-                    
-                    -- 4. VURUŞ ZORLAMA
-                    -- Önce kılıcı "Activate" et
-                    tool:Activate()
-                    
-                    -- Ardından remote'ları tetikle
-                    local gs = rs.Aero.AeroRemoteServices.GameService
-                    gs.WeaponAttackStart:FireServer()
-                    gs.MeleeHit:FireServer(hitPart)
-                    gs.WeaponAnimComplete:FireServer()
-                    
-                    print("Vuruş gönderildi: " .. tool.Name)
+                else
+                    -- Boss öldüyse veya henüz doğmadıysa karakterin donmasını çöz (havada asılı kalma)
+                    if hrp.Anchored then
+                        hrp.Anchored = false
+                    end
                 end
             end)
+        else
+            -- Menüden hile kapatıldıysa veya karakter öldüyse donmayı kaldır
+            if hrp and hrp.Anchored then
+                hrp.Anchored = false
+            end
         end
     end
 end)
