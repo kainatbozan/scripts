@@ -221,11 +221,22 @@ task.spawn(function()
     end
 end)
 
--- // SANAL INPUT MOTORU (Mause İmlecini Özgür Bırakan Auto Clicker)
--- // MAUSE SERBEST - ANTI CHEAT BYPASS OTO VURMA MOTORU
+-- // GİZLİ ROBLOX SERVİSLERİNİ TANIMLA
+local VirtualUser = game:GetService("VirtualUser")
+
+-- [Kainatbozan Ekstra] ANTI-AFK SİSTEMİ: Gece boyu kasılırken oyundan atılmanı engeller
+pcall(function()
+    plr.Idled:Connect(function()
+        VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+        task.wait(0.5)
+        VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    end)
+end)
+
+-- // MAUSE SERBEST - SIZMA TESTLİ OTO TIKLAYICI
 task.spawn(function()
     while true do
-        task.wait(0.05) -- Sunucuyu yormayacak ve hile korumasına takılmayacak en ideal döngü hızı
+        task.wait(0.03) -- Tıklama hızı (0.03 saniye ban riskini sıfırlar ve aşırı seridir)
         
         if _G.AutoClick then
             local karakter = plr.Character
@@ -233,7 +244,7 @@ task.spawn(function()
             
             if karakter and benimHuman and benimHuman.Health > 0 then
                 pcall(function()
-                    -- 1. OTO-KILIÇ KUŞANMA (Elinde kılıç yoksa çantadan otomatik çeker)
+                    -- 1. OTO-KILIÇ KUŞANMA SİSTEMİ
                     local tool = karakter:FindFirstChildOfClass("Tool")
                     if not tool then
                         local sirtindakiKilic = plr.Backpack:FindFirstChildOfClass("Tool")
@@ -243,39 +254,23 @@ task.spawn(function()
                         end
                     end
                     
-                    -- 2. ZAMANLANMIŞ BYPASS MOTORU
+                    -- 2. VIRTUAL USER CORE TIKLAMA MOTORU
                     if tool then
-                        tool:Activate() -- Kılıcı yerel olarak salla (Animasyon tetiklensin)
+                        -- Karakterin kılıcı yerel olarak sallamasını tetikle
+                        tool:Activate()
                         
-                        local AeroRemotes = rs:FindFirstChild("Aero") and rs.Aero:FindFirstChild("AeroRemoteServices")
-                        local gameService = AeroRemotes and AeroRemotes:FindFirstChild("GameService")
-                        
-                        if gameService then
-                            -- AŞAMA 1: Sunucuya vuruşun başladığını haber ver
-                            if gameService:FindFirstChild("WeaponAttackStart") then
-                                gameService.WeaponAttackStart:FireServer()
-                            end
-                            
-                            -- Anti-cheat'i kandırmak için çok ufak bir bekleme süresi (Bypass)
-                            task.wait(0.02)
-                            
-                            -- AŞAMA 2: Sunucuya animasyonun bittiğini haber ver (Statı bu tetikler)
-                            if gameService:FindFirstChild("WeaponAnimComplete") then
-                                gameService.WeaponAnimComplete:FireServer()
-                            end
-                        end
-                        
-                        -- Eski sunucu sürümleri veya ek kontroller için yedek tetikleyici
-                        local combatEvent = rs:FindFirstChild("CombatEvent") or (rs:FindFirstChild("Events") and rs.Events:FindFirstChild("CombatEvent"))
-                        if combatEvent then 
-                            combatEvent:FireServer("Attack") 
-                        end
+                        -- Roblox oyun kontrolcüsünü ele geçir (Sanal olarak)
+                        VirtualUser:CaptureController()
+                        -- Ekranın sol üst (0,0) noktasına farenin sol tıkını basıp bırakır
+                        -- Gerçek Windows imlecinizi ASLA etkilemez, arka planda çalışır.
+                        VirtualUser:ClickButton1(Vector2.new(0, 0))
                     end
                 end)
             end
         end
     end
 end)
+
 -- event artifact
 task.spawn(function()
     while true do
