@@ -221,21 +221,21 @@ task.spawn(function()
     end
 end)
 
--- Demon boss (Gövdeye Işınlanma + Sabitleme + Vuruş Motoru)
--- // GELİŞMİŞ DİNAMİK BOSS BULUCU (Klasör bağımsız)
--- // SÜPER HIZLI OTOMATİK VURMA VE OTO-KILIÇ KUŞANMA MOTORU
+-- // SANAL INPUT MOTORU (Mause İmlecini Özgür Bırakan Auto Clicker)
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local Camera = workspace.CurrentCamera
+
 task.spawn(function()
     while true do
-        task.wait(0.01) -- Saldırı hızı (0.01 saniye - En yüksek hız!)
+        task.wait(0.02) -- Tıklama hızı (Gereksiz lagı önlemek ve stabilite için ideal süre)
         
         if _G.AutoClick then
-            -- Anlık karakter ve can kontrolü (Ölüp dirilme buglarını önler)
             local karakter = plr.Character
             local benimHuman = karakter and karakter:FindFirstChildOfClass("Humanoid")
             
             if karakter and benimHuman and benimHuman.Health > 0 then
                 pcall(function()
-                    -- 1. OTO-KILIÇ KUŞANMA (Eğer elinde kılıç yoksa çantadan otomatik çeker)
+                    -- 1. OTO-KILIÇ KUŞANMA
                     local tool = karakter:FindFirstChildOfClass("Tool")
                     if not tool then
                         local sirtindakiKilic = plr.Backpack:FindFirstChildOfClass("Tool")
@@ -245,29 +245,18 @@ task.spawn(function()
                         end
                     end
                     
-                    -- 2. ANIMASYONSUZ SERİ VURMA MOTORU
+                    -- 2. SANAL TIKLAMA MOTORU
                     if tool then
-                        tool:Activate() -- Kılıcı fiziksel olarak salla
+                        -- Oyun ekranının tam orta noktasını hesapla
+                        local viewportSize = Camera.ViewportSize
+                        local centerX = viewportSize.X / 2
+                        local centerY = viewportSize.Y / 2
                         
-                        -- Oyundaki ana remote servislerini bul
-                        local AeroRemotes = rs:FindFirstChild("Aero") and rs.Aero:FindFirstChild("AeroRemoteServices")
-                        local gameService = AeroRemotes and AeroRemotes:FindFirstChild("GameService")
-                        
-                        if gameService then
-                            -- Sunucuya vuruşun başlayıp bittiğini anında haber vererek animasyonu bypass eder
-                            if gameService:FindFirstChild("WeaponAttackStart") then
-                                gameService.WeaponAttackStart:FireServer()
-                            end
-                            if gameService:FindFirstChild("WeaponAnimComplete") then
-                                gameService.WeaponAnimComplete:FireServer()
-                            end
-                        end
-                        
-                        -- Alternatif veya eski oyun sunucuları için yedek combat tetikleyicisi
-                        local combatEvent = rs:FindFirstChild("CombatEvent") or (rs:FindFirstChild("Events") and rs.Events:FindFirstChild("CombatEvent"))
-                        if combatEvent then 
-                            combatEvent:FireServer("Attack") 
-                        end
+                        -- Ekranın ortasına Sanal Sol Tık Basma Efekti (0 = Sol Tık)
+                        VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 0)
+                        task.wait(0.01)
+                        -- Ekranın ortasına Sanal Sol Tık Bırakma Efekti
+                        VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 0)
                     end
                 end)
             end
