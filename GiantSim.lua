@@ -222,12 +222,10 @@ task.spawn(function()
 end)
 
 -- // SANAL INPUT MOTORU (Mause İmlecini Özgür Bırakan Auto Clicker)
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local Camera = workspace.CurrentCamera
-
+-- // MAUSE SERBEST - ANTI CHEAT BYPASS OTO VURMA MOTORU
 task.spawn(function()
     while true do
-        task.wait(0.02) -- Tıklama hızı (Gereksiz lagı önlemek ve stabilite için ideal süre)
+        task.wait(0.05) -- Sunucuyu yormayacak ve hile korumasına takılmayacak en ideal döngü hızı
         
         if _G.AutoClick then
             local karakter = plr.Character
@@ -235,7 +233,7 @@ task.spawn(function()
             
             if karakter and benimHuman and benimHuman.Health > 0 then
                 pcall(function()
-                    -- 1. OTO-KILIÇ KUŞANMA
+                    -- 1. OTO-KILIÇ KUŞANMA (Elinde kılıç yoksa çantadan otomatik çeker)
                     local tool = karakter:FindFirstChildOfClass("Tool")
                     if not tool then
                         local sirtindakiKilic = plr.Backpack:FindFirstChildOfClass("Tool")
@@ -245,18 +243,33 @@ task.spawn(function()
                         end
                     end
                     
-                    -- 2. SANAL TIKLAMA MOTORU
+                    -- 2. ZAMANLANMIŞ BYPASS MOTORU
                     if tool then
-                        -- Oyun ekranının tam orta noktasını hesapla
-                        local viewportSize = Camera.ViewportSize
-                        local centerX = viewportSize.X / 2
-                        local centerY = viewportSize.Y / 2
+                        tool:Activate() -- Kılıcı yerel olarak salla (Animasyon tetiklensin)
                         
-                        -- Ekranın ortasına Sanal Sol Tık Basma Efekti (0 = Sol Tık)
-                        VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 0)
-                        task.wait(0.01)
-                        -- Ekranın ortasına Sanal Sol Tık Bırakma Efekti
-                        VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 0)
+                        local AeroRemotes = rs:FindFirstChild("Aero") and rs.Aero:FindFirstChild("AeroRemoteServices")
+                        local gameService = AeroRemotes and AeroRemotes:FindFirstChild("GameService")
+                        
+                        if gameService then
+                            -- AŞAMA 1: Sunucuya vuruşun başladığını haber ver
+                            if gameService:FindFirstChild("WeaponAttackStart") then
+                                gameService.WeaponAttackStart:FireServer()
+                            end
+                            
+                            -- Anti-cheat'i kandırmak için çok ufak bir bekleme süresi (Bypass)
+                            task.wait(0.02)
+                            
+                            -- AŞAMA 2: Sunucuya animasyonun bittiğini haber ver (Statı bu tetikler)
+                            if gameService:FindFirstChild("WeaponAnimComplete") then
+                                gameService.WeaponAnimComplete:FireServer()
+                            end
+                        end
+                        
+                        -- Eski sunucu sürümleri veya ek kontroller için yedek tetikleyici
+                        local combatEvent = rs:FindFirstChild("CombatEvent") or (rs:FindFirstChild("Events") and rs.Events:FindFirstChild("CombatEvent"))
+                        if combatEvent then 
+                            combatEvent:FireServer("Attack") 
+                        end
                     end
                 end)
             end
