@@ -233,9 +233,7 @@ end)
 
 ------------------------------------------- ARKA PLAN -------------------------------------------
 
-------------------------------------------- ARKA PLAN -------------------------------------------
-
--- // [Kainatbozan] DEMON KING BULUCU
+-- // [Kainatbozan] DEMON KING BULUCU (Nokta Atışı Yol)
 local function getDemonKing()
     local npcFolder = workspace:FindFirstChild("NPC")
     local demonDis = npcFolder and npcFolder:FindFirstChild("DemonKing")
@@ -250,17 +248,17 @@ local function getDemonKing()
     return nil, nil, nil
 end
 
--- // [Kainatbozan] BOROCK BULUCU
+-- // [Kainatbozan] BOROCK BULUCU (Senin Bulduğun Nokta Atışı Yol)
 local function getBorock()
     local npcFolder = workspace:FindFirstChild("NPC")
-    local borockDis = npcFolder and npcFolder:FindFirstChild("Borock")
-    if borockDis then
-        local borockIc = borockDis:FindFirstChild("Borock")
-        local hedefBorock = borockIc or borockDis
-        local hum = hedefBorock:FindFirstChildOfClass("Humanoid")
-        local torso = hedefBorock:FindFirstChild("HumanoidRootPart") or hedefBorock.PrimaryPart
+    local bossFolder = npcFolder and npcFolder:FindFirstChild("Boss")
+    local borockModel = bossFolder and bossFolder:FindFirstChild("Borock")
+    
+    if borockModel then
+        local hum = borockModel:FindFirstChildOfClass("Humanoid")
+        local torso = borockModel:FindFirstChild("HumanoidRootPart") or borockModel.PrimaryPart
         if hum and torso and hum.Health > 0 then
-            return hedefBorock, torso, hum
+            return borockModel, torso, hum
         end
     end
     return nil, nil, nil
@@ -270,9 +268,8 @@ end
 -- // AYRI BUTONLU MANUEL POZİSYONLAMA VE OTO-KILIÇ MOTORU
 task.spawn(function()
     while true do
-        task.wait(0.01) -- Maksimum yapışma hızı
+        task.wait(0.01) -- En yüksek kilitlenme hızı
         
-        -- Eğer iki butondan biri aktifse döngüyü çalıştır
         if _G.AutoDemon or _G.AutoBorock then
             local karakter = plr.Character
             local benimHrp = karakter and karakter:FindFirstChild("HumanoidRootPart")
@@ -282,14 +279,14 @@ task.spawn(function()
                 pcall(function()
                     local bossModel, bossTorso, bossHumanoid
                     
-                    -- Hangi buton aktifse ona göre fonksiyonu çağırıyoruz
+                    -- Hangi buton aktifse ona göre ilgili fonksiyon çağrılıyor
                     if _G.AutoDemon then
                         bossModel, bossTorso, bossHumanoid = getDemonKing()
                     elseif _G.AutoBorock then
                         bossModel, bossTorso, bossHumanoid = getBorock()
                     end
                     
-                    -- Hedef boss bulunduysa ve canlıysa sabitle
+                    -- Canlı boss tespit edildiyse yapış
                     if bossModel and bossTorso and bossHumanoid then
                         -- 1. OTO-KILIÇ KUŞANMA
                         local tool = karakter:FindFirstChildOfClass("Tool")
@@ -300,7 +297,7 @@ task.spawn(function()
                             end
                         end
                         
-                        -- 2. %100 HASAR POZİSYONU (Kılıç Menzili: 2.5 Birim)
+                        -- 2. %100 HASAR POZİSYONU (Menzil: 2.5 Birim)
                         benimHrp.Anchored = false 
                         local hedefKonum = bossTorso.Position + (bossTorso.CFrame.LookVector * 2.5)
                         benimHrp.CFrame = CFrame.lookAt(hedefKonum, bossTorso.Position)
@@ -308,7 +305,7 @@ task.spawn(function()
                         benimHrp.Velocity = Vector3.new(0, 0, 0)
                         benimHrp.Anchored = true -- Havada çivi gibi dondur
                     else
-                        -- Boss o an haritada yoksa donmayı çöz (Düşebilmek için)
+                        -- Boss o an haritada yoksa veya öldüyse karakteri serbest bırak
                         if benimHrp.Anchored then 
                             benimHrp.Anchored = false 
                         end
@@ -316,7 +313,7 @@ task.spawn(function()
                 end)
             end
         else
-            -- İki buton da kapalıysa karakterin donmasını tamamen iptal et
+            -- İki buton da kapalıysa donmayı anında çöz
             local karakter = plr.Character
             local benimHrp = karakter and karakter:FindFirstChild("HumanoidRootPart")
             if benimHrp and benimHrp.Anchored then
