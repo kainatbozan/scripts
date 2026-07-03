@@ -222,47 +222,102 @@ task.spawn(function()
 end)
 
 -- Demon boss (Gövdeye Işınlanma + Sabitleme + Vuruş Motoru)
+-- // GELİŞMİŞ DİNAMİK BOSS BULUCU (Klasör bağımsız)
+local function findDemonKingBoss()
+    -- 1. İhtimal: Doğrudan Workspace içinde mi?
+    if workspace:FindFirstChild("DemonKing") then return workspace.DemonKing end
+    if workspace:FindFirstChild("Demon King") then return workspace["Demon King"] end
+    
+    -- 2. İhtimal: workspace.NPC klasöründe mi?
+    local npcFolder = workspace:FindFirstChild("NPC")
+    -- 3. İhtimal: workspace.Scene.NPC klasöründe mi? (Orb farmının olduğu yer)
+    if not npcFolder and workspace:FindFirstChild("Scene") then
+        npcFolder = workspace.Scene:FindFirstChild("NPC")
+    end
+    
+    if npcFolder then
+        if npcFolder:FindFirstChild("DemonKing") then return npcFolder.DemonKing end
+        if npcFolder:FindFirstChild("Demon King") then return npcFolder["Demon King"] end
+    end
+    
+    -- 4. İhtimal: Haritadaki tüm modelleri tara (Garantili Son Çare)
+    for _, child in ipairs(workspace:GetChildren()) do
+        if child:IsA("Model") and (child.Name:match("Demon") or child.Name:match("King")) then
+            return child
+        end
+    end
+    return nil
+end
+
+-- Demon boss (Dinamik Tarama + Güvenli Işınlanma + Vuruş Motoru)
 task.spawn(function()
+    local lastLogTime = 0
     while true do
-        task.wait(0.1) -- Boss'a anlık yapışabilmek için bekleme süresini düşürdük
+        task.wait(0.1) -- Hızlı tepki vermesi için süreyi düşürdük
         
-        if _G.AutoBoss and alive and hrp then
+        if _G.AutoBoss then
+            if not alive or not hrp then 
+                task.wait(0.5)
+                continue 
+            end
+            
             pcall(function()
-                local npcFolder = workspace:FindFirstChild("NPC")
-                local bossModel = npcFolder and npcFolder:FindFirstChild("DemonKing")
-                local bossHRP = bossModel and bossModel:FindFirstChild("HumanoidRootPart")
-                local bossHumanoid = bossModel and bossModel:FindFirstChildOfClass("Humanoid")
+                local bossModel = findDemonKingBoss()
                 
-                -- Boss yaşıyorsa ve haritada varsa işlemleri başlat
-                if bossHRP and bossHumanoid and bossHumanoid.Health > 0 then
-                    -- 1. GÖVDEYE IŞINLAN VE KARAKTERİ DONDUR
-                    -- Boss'un tam gövde merkezinin 2 birim yukarısına sabitler (yerin altına düşmeyi engeller)
-                    hrp.CFrame = bossHRP.CFrame * CFrame.new(0, 2, 0)
-                    hrp.Anchored = true
-                    hrp.Velocity = Vector3.new(0, 0, 0) -- Fiziksel hızlanmaları sıfırla
+                if bossModel then
+                    local bossHRP = bossModel:FindFirstChild("HumanoidRootPart")
+                    local bossHumanoid = bossModel:FindFirstChildOfClass("Humanoid")
                     
-                    -- 2. KILIÇ KONTROLÜ VE OTOMATİK VURUŞ
-                    local tool = plr.Character:FindFirstChildOfClass("Tool")
-                    if tool then
-                        tool:Activate() -- Kılıcı salla
+                    if bossHRP and bossHumanoid and bossHumanoid.Health > 0 then
+                        -- 1. GÜVENLİ IŞINLANMA DIZISI
+                        hrp.Anchored = false -- Işınlanırken takılmamak için önce donmayı çöz
                         
-                        -- Uzaktan sunucuya hasar bilgisini gönder
-                        local gs = rs.Aero.AeroRemoteServices.GameService
-                        if gs then
-                            gs.WeaponAttackStart:FireServer()
-                            gs.MeleeHit:FireServer(bossHRP) -- Hasarı direkt boss'un gövdesine vurur
-                            gs.WeaponAnimComplete:FireServer()
+                        -- Boss'un kafasının 4 birim yukarısına ışınla (Yere düşmeyi veya bugda kalmayı önler)
+                        hrp.CFrame = bossHRP.CFrame * CFrame.new(0, 4, 0)
+                        hrp.Velocity = Vector3.new(0, 0, 0) -- Hızlanmayı sıfırla
+                        
+                        hrp.Anchored = true -- Işınlanma bittiği an havada dondur
+                        
+                        -- 2. OTOMATİK VURUŞ MOTORU
+                        local tool = plr.Character:FindFirstChildOfClass("Tool")
+                        if tool then
+                            tool:Activate() -- Elindeki kılıcı salla
+                            
+                            local AeroRemotes = rs:FindFirstChild("Aero") and rs.Aero:FindFirstChild("AeroRemoteServices")
+                            local gameService = AeroRemotes and AeroRemotes:FindFirstChild("GameService")
+                            
+                            if gameService then
+                                -- Sunucuya hasar remote'larını sırasıyla gönderiyoruz
+                                if gameService:FindFirstChild("WeaponAttackStart") then
+                                    gameService.WeaponAttackStart:FireServer()
+                                end
+                                if gameService:FindFirstChild("MeleeHit") then
+                                    gameService.MeleeHit:FireServer(bossHRP)
+                                end
+                                if gameService:FindFirstChild("WeaponAnimComplete") then
+                                    gameService.WeaponAnimComplete:FireServer()
+                                end
+                            end
+                        end
+                    else
+                        -- Boss ölü canlanmasını bekliyor
+                        if hrp.Anchored then hrp.Anchored = false end
+                        if tick() - lastLogTime > 5 then
+                            print("[Kainatbozan] Boss haritada var ama canlı değil. Doğması bekleniyor...")
+                            lastLogTime = tick()
                         end
                     end
                 else
-                    -- Boss öldüyse veya henüz doğmadıysa karakterin donmasını çöz (havada asılı kalma)
-                    if hrp.Anchored then
-                        hrp.Anchored = false
+                    -- Boss haritada tamamen yoksa karakterin donmasını çöz
+                    if hrp.Anchored then hrp.Anchored = false end
+                    if tick() - lastLogTime > 5 then
+                        warn("[Kainatbozan] Demon King haritanın hiçbir yerinde bulunamadı!")
+                        lastLogTime = tick()
                     end
                 end
             end)
         else
-            -- Menüden hile kapatıldıysa veya karakter öldüyse donmayı kaldır
+            -- Menüden hile kapatıldıysa karakterin donmasını anında iptal et
             if hrp and hrp.Anchored then
                 hrp.Anchored = false
             end
