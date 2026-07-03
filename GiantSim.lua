@@ -238,54 +238,10 @@ local function derindenBossBul()
 end
 
 
--- // 1. MAUSE SERBEST OTO TIKLAYICI MOTORU
+-- // %100 MANUEL VURUŞ İÇİN POZİSYONLAMA VE OTO-KILIÇ MOTORU
 task.spawn(function()
     while true do
-        task.wait(0.04) -- Hem çok seri hem de anti-cheat'e takılmayacak en ideal süre
-        
-        if _G.AutoClick then
-            local karakter = plr.Character
-            local benimHuman = karakter and karakter:FindFirstChildOfClass("Humanoid")
-            
-            if karakter and benimHuman and benimHuman.Health > 0 then
-                pcall(function()
-                    -- Kılıç Kuşanma Kontrolü (Elde yoksa çantadan otomatik alır)
-                    local tool = karakter:FindFirstChildOfClass("Tool")
-                    if not tool then
-                        local sirtindakiKilic = plr.Backpack:FindFirstChildOfClass("Tool")
-                        if sirtindakiKilic then
-                            sirtindakiKilic.Parent = karakter
-                            tool = sirtindakiKilic
-                        end
-                    end
-                    
-                    -- Vuruş İsteklerini Sunucuya Gönderme (Mause imlecine dokunmaz)
-                    if tool then
-                        tool:Activate() -- Kılıcı salla
-                        
-                        local AeroRemotes = rs:FindFirstChild("Aero") and rs.Aero:FindFirstChild("AeroRemoteServices")
-                        local gameService = AeroRemotes and AeroRemotes:FindFirstChild("GameService")
-                        if gameService then
-                            gameService.WeaponAnimComplete:FireServer()
-                            gameService.WeaponAttackStart:FireServer()
-                        end
-                        
-                        local combatEvent = rs:FindFirstChild("CombatEvent") or (rs:FindFirstChild("Events") and rs.Events:FindFirstChild("CombatEvent"))
-                        if combatEvent then 
-                            combatEvent:FireServer("Attack") 
-                        end
-                    end
-                end)
-            end
-        end
-    end
-end)
-
-
--- // 2. ULTRASÖNİK BOSS IŞINLANMA VE KESME MOTORU
-task.spawn(function()
-    while true do
-        task.wait(0.1)
+        task.wait(0.02) -- Boss hareket ettikçe anlık olarak ona yapışmak için çok seri döngü
         
         if _G.AutoBoss then
             local karakter = plr.Character
@@ -297,35 +253,26 @@ task.spawn(function()
                     local bossModel, bossHRP, bossHumanoid = derindenBossBul()
                     
                     if bossModel and bossHRP and bossHumanoid then
-                        -- Boss'un kafasının 5 birim yukarısına ışınlan ve havada sabitle
-                        benimHrp.Anchored = false
-                        benimHrp.CFrame = bossHRP.CFrame * CFrame.new(0, 5, 0)
-                        benimHrp.Velocity = Vector3.new(0, 0, 0)
-                        benimHrp.Anchored = true
-                        
-                        -- Boss'a vururken kılıcı kuşan
+                        -- 1. OTO-KILIÇ KUŞANMA (Tıklarken elinde kılıç olsun diye çantadan otomatik çeker)
                         local tool = karakter:FindFirstChildOfClass("Tool")
                         if not tool then
                             local sirtindakiKilic = plr.Backpack:FindFirstChildOfClass("Tool")
                             if sirtindakiKilic then
                                 sirtindakiKilic.Parent = karakter
-                                tool = sirtindakiKilic
                             end
                         end
                         
-                        -- Doğrudan Boss'un gövdesine hasar remote'u fırlatır
-                        if tool then
-                            tool:Activate()
-                            local AeroRemotes = rs:FindFirstChild("Aero") and rs.Aero:FindFirstChild("AeroRemoteServices")
-                            local gameService = AeroRemotes and AeroRemotes:FindFirstChild("GameService")
-                            if gameService then
-                                gameService.WeaponAttackStart:FireServer()
-                                gameService.MeleeHit:FireServer(bossHRP)
-                                gameService.WeaponAnimComplete:FireServer()
-                            end
-                        end
+                        -- 2. %100 VURUŞ POZİSYONU (Tam menzil, boss'a dönük ve çakılı)
+                        benimHrp.Anchored = false -- Pozisyon ayarlanırken glitch olmasın diye anlık çözüyoruz
+                        
+                        -- Boss'un 3 birim önünde, 1 birim yukarısında konumlan ve yüzünü direkt boss'un kalbine çevir
+                        local hedefKonum = bossHRP.Position + (bossHRP.CFrame.LookVector * 3) + Vector3.new(0, 1, 0)
+                        benimHrp.CFrame = CFrame.lookAt(hedefKonum, bossHRP.Position)
+                        
+                        benimHrp.Velocity = Vector3.new(0, 0, 0) -- Fiziksel savrulmaları ve bugları sıfırla
+                        benimHrp.Anchored = true -- Karakteri havada çivi gibi çak (Boss seni fırlatamaz)
                     else
-                        -- Boss yoksa veya öldüyse karakterin donmasını çöz (Yere düşebilmek için)
+                        -- Boss haritada yoksa veya öldüyse karakteri serbest bırak
                         if benimHrp.Anchored then 
                             benimHrp.Anchored = false 
                         end
@@ -333,7 +280,7 @@ task.spawn(function()
                 end)
             end
         else
-            -- Menüden boss farmı kapatılırsa karakter sabitlemeyi anında kaldır
+            -- Menüden buton kapatılırsa veya karakter ölürse donmayı anında kaldır
             local karakter = plr.Character
             local benimHrp = karakter and karakter:FindFirstChild("HumanoidRootPart")
             if benimHrp and benimHrp.Anchored then
