@@ -250,81 +250,105 @@ local function findDemonKingBoss()
 end
 
 -- Demon boss (Dinamik Tarama + Güvenli Işınlanma + Vuruş Motoru)
+-- // ULTRASÖNİK DERİN BOSS BULUCU (En derindeki klasörleri bile tarar)
+local function derindenBossBul()
+    -- GetDescendants() sayesinde haritadaki tüm alt klasörlerin en dibine kadar bakar
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("Model") and (v.Name:lower():match("demon") or v.Name:lower():match("king")) then
+            -- Modelin gerçekten canlı bir boss olduğunu doğrula
+            local hum = v:FindFirstChildOfClass("Humanoid")
+            local bHrp = v:FindFirstChild("HumanoidRootPart")
+            if hum and bHrp and hum.Health > 0 then
+                return v, bHrp, hum
+            end
+        end
+    end
+    return nil, nil, nil
+end
+
+-- Demon boss ana döngüsü (Karakter yenilenme korumalı)
 task.spawn(function()
-    local lastLogTime = 0
+    local sonYaziZamani = 0
     while true do
-        task.wait(0.1) -- Hızlı tepki vermesi için süreyi düşürdük
+        task.wait(0.1) -- Boss'un tepesine anında yapışmak için hızlı döngü
         
         if _G.AutoBoss then
-            if not alive or not hrp then 
-                task.wait(0.5)
-                continue 
+            -- Karakter kontrollerini doğrudan döngü içinde yapıyoruz (Ölüp dirilme buglarını %100 çözer)
+            local karakter = plr.Character
+            local benimHrp = karakter and karakter:FindFirstChild("HumanoidRootPart")
+            local benimHuman = karakter and karakter:FindFirstChildOfClass("Humanoid")
+            
+            if not karakter or not benimHrp or not benimHuman or benimHuman.Health <= 0 then
+                if tick() - sonYaziZamani > 4 then
+                    print("[Kainatbozan] Kendi karakterinizin yüklenmesi bekleniyor veya karakter ölü.")
+                    sonYaziZamani = tick()
+                end
+                continue
             end
             
-            pcall(function()
-                local bossModel = findDemonKingBoss()
+            -- Hata koruma kalkanı (pcall) yardımıyla kodun çökmesini önlüyoruz
+            local basarili, hataMesaji = pcall(function()
+                local bossModel, bossHRP, bossHumanoid = derindenBossBul()
                 
-                if bossModel then
-                    local bossHRP = bossModel:FindFirstChild("HumanoidRootPart")
-                    local bossHumanoid = bossModel:FindFirstChildOfClass("Humanoid")
+                if bossModel and bossHRP and bossHumanoid then
+                    -- 1. IŞINLANMA VE HAVADA ÇAKILI KALMA
+                    benimHrp.Anchored = false -- Işınlanırken glitch olmasın diye önce donmayı çöz
                     
-                    if bossHRP and bossHumanoid and bossHumanoid.Health > 0 then
-                        -- 1. GÜVENLİ IŞINLANMA DIZISI
-                        hrp.Anchored = false -- Işınlanırken takılmamak için önce donmayı çöz
+                    -- Boss'un tam kafasının 5 birim yukarısına ışınlar (Yere batmayı önler)
+                    benimHrp.CFrame = bossHRP.CFrame * CFrame.new(0, 5, 0)
+                    benimHrp.Velocity = Vector3.new(0, 0, 0) -- Karakterin fiziksel hızını sıfırla
+                    
+                    benimHrp.Anchored = true -- Havada dondur (Boss seni geriye fırlatamaz)
+                    
+                    -- 2. OTOMATİK SALLAMA VE HASAR MOTORU
+                    local tool = karakter:FindFirstChildOfClass("Tool")
+                    if tool then
+                        tool:Activate() -- Elindeki kılıcı salla
                         
-                        -- Boss'un kafasının 4 birim yukarısına ışınla (Yere düşmeyi veya bugda kalmayı önler)
-                        hrp.CFrame = bossHRP.CFrame * CFrame.new(0, 4, 0)
-                        hrp.Velocity = Vector3.new(0, 0, 0) -- Hızlanmayı sıfırla
+                        local AeroRemotes = rs:FindFirstChild("Aero") and rs.Aero:FindFirstChild("AeroRemoteServices")
+                        local gameService = AeroRemotes and AeroRemotes:FindFirstChild("GameService")
                         
-                        hrp.Anchored = true -- Işınlanma bittiği an havada dondur
-                        
-                        -- 2. OTOMATİK VURUŞ MOTORU
-                        local tool = plr.Character:FindFirstChildOfClass("Tool")
-                        if tool then
-                            tool:Activate() -- Elindeki kılıcı salla
-                            
-                            local AeroRemotes = rs:FindFirstChild("Aero") and rs.Aero:FindFirstChild("AeroRemoteServices")
-                            local gameService = AeroRemotes and AeroRemotes:FindFirstChild("GameService")
-                            
-                            if gameService then
-                                -- Sunucuya hasar remote'larını sırasıyla gönderiyoruz
-                                if gameService:FindFirstChild("WeaponAttackStart") then
-                                    gameService.WeaponAttackStart:FireServer()
-                                end
-                                if gameService:FindFirstChild("MeleeHit") then
-                                    gameService.MeleeHit:FireServer(bossHRP)
-                                end
-                                if gameService:FindFirstChild("WeaponAnimComplete") then
-                                    gameService.WeaponAnimComplete:FireServer()
-                                end
+                        if gameService then
+                            -- Hasar remote'larını sırasıyla sunucuya fırlatıyoruz
+                            if gameService:FindFirstChild("WeaponAttackStart") then
+                                gameService.WeaponAttackStart:FireServer()
+                            end
+                            if gameService:FindFirstChild("MeleeHit") then
+                                gameService.MeleeHit:FireServer(bossHRP)
+                            end
+                            if gameService:FindFirstChild("WeaponAnimComplete") then
+                                gameService.WeaponAnimComplete:FireServer()
                             end
                         end
                     else
-                        -- Boss ölü canlanmasını bekliyor
-                        if hrp.Anchored then hrp.Anchored = false end
-                        if tick() - lastLogTime > 5 then
-                            print("[Kainatbozan] Boss haritada var ama canlı değil. Doğması bekleniyor...")
-                            lastLogTime = tick()
+                        if tick() - sonYaziZamani > 5 then
+                            warn("[Kainatbozan] UYARI: Elinizde kılıç yok! Hasar vurulamaz.")
+                            sonYaziZamani = tick()
                         end
                     end
                 else
-                    -- Boss haritada tamamen yoksa karakterin donmasını çöz
-                    if hrp.Anchored then hrp.Anchored = false end
-                    if tick() - lastLogTime > 5 then
-                        warn("[Kainatbozan] Demon King haritanın hiçbir yerinde bulunamadı!")
-                        lastLogTime = tick()
+                    -- Haritada boss yoksa veya ölmüşse havada asılı kalmamak için donmayı çöz
+                    if benimHrp.Anchored then benimHrp.Anchored = false end
+                    if tick() - sonYaziZamani > 5 then
+                        print("[Kainatbozan] Haritada canlı Demon King bulunamadı, aranıyor...")
+                        sonYaziZamani = tick()
                     end
                 end
             end)
+            
+            if not basarili and hataMesaji then
+                warn("[Kainatbozan Hata Raporu]: " .. tostring(hataMesaji))
+            end
         else
-            -- Menüden hile kapatıldıysa karakterin donmasını anında iptal et
-            if hrp and hrp.Anchored then
-                hrp.Anchored = false
+            -- Menüden özellik kapatıldıysa karakterin donmasını anında iptal et
+            local karakter = plr.Character
+            local benimHrp = karakter and karakter:FindFirstChild("HumanoidRootPart")
+            if benimHrp and benimHrp.Anchored then
+                benimHrp.Anchored = false
             end
         end
     end
 end)
-
 -- event artifact
 task.spawn(function()
     while true do
