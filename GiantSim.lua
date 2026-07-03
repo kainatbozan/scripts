@@ -223,12 +223,25 @@ end)
 
 ------------------------------------------- ARKA PLAN -------------------------------------------
 
-------------------------------------------- ARKA PLAN -------------------------------------------
+-- // [Kainatbozan] DERİN BOSS BULUCU FONKSİYONU
+local function derindenBossBul()
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("Model") and (v.Name:lower():match("demon") or v.Name:lower():match("king")) then
+            local hum = v:FindFirstChildOfClass("Humanoid")
+            local bHrp = v:FindFirstChild("HumanoidRootPart")
+            if hum and bHrp and hum.Health > 0 then
+                return v, bHrp, hum
+            end
+        end
+    end
+    return nil, nil, nil
+end
 
--- // MANUEL VURUŞ İÇİN NOKTA ATIŞI BOSS SABİTLEME MOTORU
+
+-- // %100 MANUEL VURUŞ İÇİN POZİSYONLAMA VE OTO-KILIÇ MOTORU
 task.spawn(function()
     while true do
-        task.wait(0.01) -- Boss hareket ettikçe anlık olarak yapışmak için en yüksek hız
+        task.wait(0.02) -- Boss hareket ettikçe anlık olarak ona yapışmak için çok seri döngü
         
         if _G.AutoBoss then
             local karakter = plr.Character
@@ -237,17 +250,10 @@ task.spawn(function()
             
             if karakter and benimHrp and benimHuman and benimHuman.Health > 0 then
                 pcall(function()
-                    -- Oyun içi tam yolu güvenli bir şekilde kontrol ediyoruz (Nil hatası vermemesi için)
-                    local npcFolder = workspace:FindFirstChild("NPC")
-                    local bossDis = npcFolder and npcFolder:FindFirstChild("DemonKing")
-                    local bossIc = bossDis and bossDis:FindFirstChild("DemonKing")
-                    local bossTorso = bossIc and bossIc:FindFirstChild("UpperTorso")
-                    local bossHumanoid = bossIc and bossIc:FindFirstChildOfClass("Humanoid")
+                    local bossModel, bossHRP, bossHumanoid = derindenBossBul()
                     
-                    -- Boss haritada varsa ve canlıysa kilitlemeyi başlat
-                    if bossTorso and bossHumanoid and bossHumanoid.Health > 0 then
-                        
-                        -- 1. OTO-KILIÇ KUŞANMA
+                    if bossModel and bossHRP and bossHumanoid then
+                        -- 1. OTO-KILIÇ KUŞANMA (Tıklarken elinde kılıç olsun diye çantadan otomatik çeker)
                         local tool = karakter:FindFirstChildOfClass("Tool")
                         if not tool then
                             local sirtindakiKilic = plr.Backpack:FindFirstChildOfClass("Tool")
@@ -256,17 +262,17 @@ task.spawn(function()
                             end
                         end
                         
-                        -- 2. %100 HASAR MESAFESİNE ÇAKILMA
-                        benimHrp.Anchored = false -- Glitch olmasın diye anlık çöz
+                        -- 2. %100 VURUŞ POZİSYONU (Tam menzil, boss'a dönük ve çakılı)
+                        benimHrp.Anchored = false -- Pozisyon ayarlanırken glitch olmasın diye anlık çözüyoruz
                         
-                        -- UpperTorso'nun tam 2.5 birim önünde dur ve yüzünü tam boss'un göğsüne çevir
-                        local hedefKonum = bossTorso.Position + (bossTorso.CFrame.LookVector * 2.5)
-                        benimHrp.CFrame = CFrame.lookAt(hedefKonum, bossTorso.Position)
+                        -- Boss'un 3 birim önünde, 1 birim yukarısında konumlan ve yüzünü direkt boss'un kalbine çevir
+                        local hedefKonum = bossHRP.Position + (bossHRP.CFrame.LookVector * 3) + Vector3.new(0, 1, 0)
+                        benimHrp.CFrame = CFrame.lookAt(hedefKonum, bossHRP.Position)
                         
-                        benimHrp.Velocity = Vector3.new(0, 0, 0) -- Hızlanmaları sıfırla
-                        benimHrp.Anchored = true -- Havada çivi gibi dondur (Boss seni fırlatamaz)
+                        benimHrp.Velocity = Vector3.new(0, 0, 0) -- Fiziksel savrulmaları ve bugları sıfırla
+                        benimHrp.Anchored = true -- Karakteri havada çivi gibi çak (Boss seni fırlatamaz)
                     else
-                        -- Boss öldüyse veya doğmadıysa karakterin donmasını çöz
+                        -- Boss haritada yoksa veya öldüyse karakteri serbest bırak
                         if benimHrp.Anchored then 
                             benimHrp.Anchored = false 
                         end
@@ -274,7 +280,7 @@ task.spawn(function()
                 end)
             end
         else
-            -- Menüden buton kapatılırsa karakterin donmasını anında iptal et
+            -- Menüden buton kapatılırsa veya karakter ölürse donmayı anında kaldır
             local karakter = plr.Character
             local benimHrp = karakter and karakter:FindFirstChild("HumanoidRootPart")
             if benimHrp and benimHrp.Anchored then
@@ -283,7 +289,6 @@ task.spawn(function()
         end
     end
 end)
-
 -- event artifact
 task.spawn(function()
     while true do
