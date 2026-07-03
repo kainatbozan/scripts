@@ -140,16 +140,26 @@ EggsTab:CreateToggle({
    end,
 })
 
+-- // QUEST TAB - BOSS SEÇİM MENÜSÜ
 QuestTab:CreateToggle({
-   Name = "Auto Boss Kill (Demon King)",
+   Name = "Auto Demon King",
    CurrentValue = false,
-   Flag = "AutoBossToggleV12",
+   Flag = "AutoDemonToggleV12",
    Callback = function(Value)
-      _G.AutoBoss = Value
-      -- Eğer hile kapatılırsa karakterin donmasını anında çözelim
-      if not Value and hrp then
-          hrp.Anchored = false
-      end
+      _G.AutoDemon = Value
+      -- Kapatıldığında karakterin donmasını anında çöz
+      if not Value and hrp then hrp.Anchored = false end
+   end,
+})
+
+QuestTab:CreateToggle({
+   Name = "Auto Borock",
+   CurrentValue = false,
+   Flag = "AutoBorockToggleV12",
+   Callback = function(Value)
+      _G.AutoBorock = Value
+      -- Kapatıldığında karakterin donmasını anında çöz
+      if not Value and hrp then hrp.Anchored = false end
    end,
 })
 ------------------------------------------- ARKA PLAN -------------------------------------------
@@ -223,37 +233,65 @@ end)
 
 ------------------------------------------- ARKA PLAN -------------------------------------------
 
--- // [Kainatbozan] DERİN BOSS BULUCU FONKSİYONU
-local function derindenBossBul()
-    for _, v in ipairs(workspace:GetDescendants()) do
-        if v:IsA("Model") and (v.Name:lower():match("demon") or v.Name:lower():match("king")) then
-            local hum = v:FindFirstChildOfClass("Humanoid")
-            local bHrp = v:FindFirstChild("HumanoidRootPart")
-            if hum and bHrp and hum.Health > 0 then
-                return v, bHrp, hum
-            end
+------------------------------------------- ARKA PLAN -------------------------------------------
+
+-- // [Kainatbozan] DEMON KING BULUCU
+local function getDemonKing()
+    local npcFolder = workspace:FindFirstChild("NPC")
+    local demonDis = npcFolder and npcFolder:FindFirstChild("DemonKing")
+    local demonIc = demonDis and demonDis:FindFirstChild("DemonKing")
+    if demonIc then
+        local hum = demonIc:FindFirstChildOfClass("Humanoid")
+        local torso = demonIc:FindFirstChild("HumanoidRootPart") or demonIc.PrimaryPart
+        if hum and torso and hum.Health > 0 then
+            return demonIc, torso, hum
+        end
+    end
+    return nil, nil, nil
+end
+
+-- // [Kainatbozan] BOROCK BULUCU
+local function getBorock()
+    local npcFolder = workspace:FindFirstChild("NPC")
+    local borockDis = npcFolder and npcFolder:FindFirstChild("Borock")
+    if borockDis then
+        local borockIc = borockDis:FindFirstChild("Borock")
+        local hedefBorock = borockIc or borockDis
+        local hum = hedefBorock:FindFirstChildOfClass("Humanoid")
+        local torso = hedefBorock:FindFirstChild("HumanoidRootPart") or hedefBorock.PrimaryPart
+        if hum and torso and hum.Health > 0 then
+            return hedefBorock, torso, hum
         end
     end
     return nil, nil, nil
 end
 
 
--- // %100 MANUEL VURUŞ İÇİN POZİSYONLAMA VE OTO-KILIÇ MOTORU
+-- // AYRI BUTONLU MANUEL POZİSYONLAMA VE OTO-KILIÇ MOTORU
 task.spawn(function()
     while true do
-        task.wait(0.02) -- Boss hareket ettikçe anlık olarak ona yapışmak için çok seri döngü
+        task.wait(0.01) -- Maksimum yapışma hızı
         
-        if _G.AutoBoss then
+        -- Eğer iki butondan biri aktifse döngüyü çalıştır
+        if _G.AutoDemon or _G.AutoBorock then
             local karakter = plr.Character
             local benimHrp = karakter and karakter:FindFirstChild("HumanoidRootPart")
             local benimHuman = karakter and karakter:FindFirstChildOfClass("Humanoid")
             
             if karakter and benimHrp and benimHuman and benimHuman.Health > 0 then
                 pcall(function()
-                    local bossModel, bossHRP, bossHumanoid = derindenBossBul()
+                    local bossModel, bossTorso, bossHumanoid
                     
-                    if bossModel and bossHRP and bossHumanoid then
-                        -- 1. OTO-KILIÇ KUŞANMA (Tıklarken elinde kılıç olsun diye çantadan otomatik çeker)
+                    -- Hangi buton aktifse ona göre fonksiyonu çağırıyoruz
+                    if _G.AutoDemon then
+                        bossModel, bossTorso, bossHumanoid = getDemonKing()
+                    elseif _G.AutoBorock then
+                        bossModel, bossTorso, bossHumanoid = getBorock()
+                    end
+                    
+                    -- Hedef boss bulunduysa ve canlıysa sabitle
+                    if bossModel and bossTorso and bossHumanoid then
+                        -- 1. OTO-KILIÇ KUŞANMA
                         local tool = karakter:FindFirstChildOfClass("Tool")
                         if not tool then
                             local sirtindakiKilic = plr.Backpack:FindFirstChildOfClass("Tool")
@@ -262,17 +300,15 @@ task.spawn(function()
                             end
                         end
                         
-                        -- 2. %100 VURUŞ POZİSYONU (Tam menzil, boss'a dönük ve çakılı)
-                        benimHrp.Anchored = false -- Pozisyon ayarlanırken glitch olmasın diye anlık çözüyoruz
+                        -- 2. %100 HASAR POZİSYONU (Kılıç Menzili: 2.5 Birim)
+                        benimHrp.Anchored = false 
+                        local hedefKonum = bossTorso.Position + (bossTorso.CFrame.LookVector * 2.5)
+                        benimHrp.CFrame = CFrame.lookAt(hedefKonum, bossTorso.Position)
                         
-                        -- Boss'un 3 birim önünde, 1 birim yukarısında konumlan ve yüzünü direkt boss'un kalbine çevir
-                        local hedefKonum = bossHRP.Position + (bossHRP.CFrame.LookVector * 3) + Vector3.new(0, 1, 0)
-                        benimHrp.CFrame = CFrame.lookAt(hedefKonum, bossHRP.Position)
-                        
-                        benimHrp.Velocity = Vector3.new(0, 0, 0) -- Fiziksel savrulmaları ve bugları sıfırla
-                        benimHrp.Anchored = true -- Karakteri havada çivi gibi çak (Boss seni fırlatamaz)
+                        benimHrp.Velocity = Vector3.new(0, 0, 0)
+                        benimHrp.Anchored = true -- Havada çivi gibi dondur
                     else
-                        -- Boss haritada yoksa veya öldüyse karakteri serbest bırak
+                        -- Boss o an haritada yoksa donmayı çöz (Düşebilmek için)
                         if benimHrp.Anchored then 
                             benimHrp.Anchored = false 
                         end
@@ -280,7 +316,7 @@ task.spawn(function()
                 end)
             end
         else
-            -- Menüden buton kapatılırsa veya karakter ölürse donmayı anında kaldır
+            -- İki buton da kapalıysa karakterin donmasını tamamen iptal et
             local karakter = plr.Character
             local benimHrp = karakter and karakter:FindFirstChild("HumanoidRootPart")
             if benimHrp and benimHrp.Anchored then
