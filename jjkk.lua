@@ -23,8 +23,8 @@ local comboDelay = 0.25
 local m1Delay = 0.12
 
 local autoAttackLoop = false
-local standaloneAutoM1 = false -- Bağımsız Auto M1 Toggle'ı
-local autoBehindLock = false  -- Sadece arkada kalma kilit toggle'ı
+local standaloneAutoM1 = false
+local autoBehindLock = false
 local autoBlockToggle = false
 local healthSafetyToggle = false
 local autoGuardBreakToggle = true
