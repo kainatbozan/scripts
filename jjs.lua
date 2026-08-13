@@ -1,9 +1,9 @@
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-   Name = "Jujutsu Shenanigans",
+   Name = "Jujutsu Shenanigans (Ultra Hızlı)",
    LoadingTitle = "Yükleniyor...",
-   LoadingSubtitle = "kainatbozan",
+   LoadingSubtitle = "kainatbozan - Düzenlendi",
    ConfigurationSaving = { Enabled = false }
 })
 
@@ -43,19 +43,21 @@ local behindDistance = 2.5
 local twinSpeedValue = 200
 local m1Count = 4
 local comboDelay = 0.20
-local m1Delay = 0.10
+local m1Delay = 0.00 -- Işık hızı için varsayılan 0
 local gDelay = 2.0
 
 local autoAttackLoop = false
 local standaloneAutoM1 = false
 local autoBehindLock = false
 local autoBlockToggle = false
+local autoParryToggle = false -- YENİ: Akıllı Blok
+local attackWhileBlocking = false -- YENİ: Block tutarak vur
 local healthSafetyToggle = false
 local autoGuardBreakToggle = true
 local aimbotToggle = false
 local twinSpeedToggle = false
 local autoGToggle = false
-local dummyTargetToggle = false -- TEST MODU TOGGLE
+local dummyTargetToggle = false
 
 -- Yuji Auto Combo Ayarları
 local yujiComboToggle = false
@@ -74,6 +76,7 @@ local isEscapeActive = false
 local currentTargetPlayer = nil
 local currentDummyTarget = nil
 local isRespawning = false
+local isParrying = false
 
 local UIFlags = {}
 
@@ -111,7 +114,6 @@ local function isLocalPlayerAlive()
    return true
 end
 
--- EVRENSEL KARAKTER CANLILIK KONTROLÜ (Oyuncu veya Dummy fark etmez)
 local function isCharacterAlive(char)
    if not char or not char:IsDescendantOf(Workspace) then return false end
    
@@ -131,7 +133,7 @@ local function isCharacterAlive(char)
    return true
 end
 
--- DUMMY TARAMA DÖNGÜSÜ (Kasmasın diye saniyede bir tarar)
+-- DUMMY TARAMA
 task.spawn(function()
    while true do
       if dummyTargetToggle and isLocalPlayerAlive() then
@@ -163,7 +165,6 @@ task.spawn(function()
    end
 end)
 
--- OYUNCU HEDEFLEME GÜNCELLEMESİ
 local function updateAndGetTargetPlayer()
    if not isLocalPlayerAlive() then return nil end
    if currentTargetPlayer and isCharacterAlive(currentTargetPlayer.Character) then return currentTargetPlayer end
@@ -206,26 +207,16 @@ local function updateAndGetTargetPlayer()
    return currentTargetPlayer
 end
 
--- EVRENSEL AKTİF HEDEF GETİRİCİ (Test modu açıksa Dummy, değilse Oyuncu verir)
 local function getActiveTarget()
    if dummyTargetToggle then
-      if currentDummyTarget and isCharacterAlive(currentDummyTarget) then
-         return currentDummyTarget
-      end
+      if currentDummyTarget and isCharacterAlive(currentDummyTarget) then return currentDummyTarget end
       return nil
    else
       local p = updateAndGetTargetPlayer()
-      if p and p.Character and isCharacterAlive(p.Character) then
-         return p.Character
-      end
+      if p and p.Character and isCharacterAlive(p.Character) then return p.Character end
       return nil
    end
 end
-
-task.spawn(function()
-   task.wait(1.5)
-   updateAndGetTargetPlayer()
-end)
 
 local function isTargetBlocking()
    local targetChar = getActiveTarget()
@@ -267,21 +258,27 @@ end
 
 local function pressKey(keyCode, holdTime)
    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
-   task.wait(holdTime or 0.04)
+   task.wait(holdTime or 0.01)
    VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
 end
 
+-- IŞIK HIZINDA M1 FONKSİYONU
 local function clickM1()
    local vp = Camera.ViewportSize
    VirtualInputManager:SendMouseButtonEvent(vp.X / 2, vp.Y / 2, 0, true, game, 0)
-   task.wait(0.02)
+   RunService.RenderStepped:Wait() -- Tek bir frame bekler (Mümkün olan en hızlı tıklama)
    VirtualInputManager:SendMouseButtonEvent(vp.X / 2, vp.Y / 2, 0, false, game, 0)
+   
+   if attackWhileBlocking and not isParrying then
+      -- Vururken saniyelik block basıp çeker (Block iptalini önlemek için)
+      VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+   end
 end
 
 local function clickM2()
    local vp = Camera.ViewportSize
    VirtualInputManager:SendMouseButtonEvent(vp.X / 2, vp.Y / 2, 1, true, game, 0)
-   task.wait(0.04)
+   RunService.RenderStepped:Wait()
    VirtualInputManager:SendMouseButtonEvent(vp.X / 2, vp.Y / 2, 1, false, game, 0)
 end
 
@@ -296,6 +293,53 @@ local function resetHitboxes()
       end
    end
 end
+
+-- AKILLI BLOK (AUTO PARRY) SİSTEMİ
+task.spawn(function()
+   while true do
+      if autoParryToggle and not isEscapeActive and isLocalPlayerAlive() then
+         local targetChar = getActiveTarget()
+         if targetChar then
+            local myRoot = LocalPlayer.Character.HumanoidRootPart
+            local tRoot = targetChar:FindFirstChild("HumanoidRootPart")
+            
+            -- Hedef 20 studdan yakınsa animasyonlarını tarar
+            if myRoot and tRoot and (myRoot.Position - tRoot.Position).Magnitude < 20 then
+               local eHum = targetChar:FindFirstChildOfClass("Humanoid")
+               if eHum and eHum.Health > 0 then
+                  local isAttacking = false
+                  for _, anim in ipairs(eHum:GetPlayingAnimationTracks()) do
+                     local animName = string.lower(anim.Name)
+                     -- Saldırı animasyonu isimleri (çoğu oyunu kapsar)
+                     if string.find(animName, "punch") or string.find(animName, "m1") or
+                        string.find(animName, "attack") or string.find(animName, "kick") or
+                        string.find(animName, "strike") or string.find(animName, "skill") or
+                        string.find(animName, "swing") or string.find(animName, "dash") then
+                        isAttacking = true
+                        break
+                     end
+                  end
+
+                  if isAttacking and not isParrying then
+                     isParrying = true
+                     task.spawn(function()
+                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+                        task.wait(0.35) -- Blokta kalma süresi
+                        if not autoBlockToggle then
+                           VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+                        end
+                        task.wait(0.1) -- Spam önleyici bekleme
+                        isParrying = false
+                     end)
+                  end
+               end
+            end
+         end
+      end
+      task.wait(0.01) -- Işık hızında tarama
+   end
+end)
+
 
 RunService.RenderStepped:Connect(function()
    if hitboxToggle and not dummyTargetToggle then
@@ -350,7 +394,7 @@ RunService.RenderStepped:Connect(function()
    end
 end)
 
--- SAVAŞ DÖNGÜLERİ (Target olarak ActiveTarget(Character) kullanır)
+-- SAVAŞ DÖNGÜLERİ
 task.spawn(function()
    while true do
       if yujiComboToggle and not isEscapeActive and isLocalPlayerAlive() then
@@ -367,18 +411,18 @@ task.spawn(function()
             end
 
             tpBehindTarget()
-            if autoGuardBreakToggle and isTargetBlocking() then clickM2(); task.wait(0.1) end
+            if autoGuardBreakToggle and isTargetBlocking() then clickM2(); task.wait(0.05) end
             
             for i = 1, 3 do
                if not yujiComboToggle or not isLocalPlayerAlive() or not getActiveTarget() then break end
                tpBehindTarget(); clickM1(); task.wait(m1Delay)
             end
             
-            if yujiComboToggle and isLocalPlayerAlive() and getActiveTarget() then tpBehindTarget(); pressKey(Enum.KeyCode.One, 0.05); task.wait(yujiSkillDelay) end
-            if yujiComboToggle and isLocalPlayerAlive() and getActiveTarget() then tpBehindTarget(); pressKey(Enum.KeyCode.Two, 0.05); task.wait(yujiSkillDelay) end
-            if yujiComboToggle and isLocalPlayerAlive() and getActiveTarget() then tpBehindTarget(); pressKey(Enum.KeyCode.Three, 0.05); task.wait(yujiSkillDelay) end
-            if yujiComboToggle and isLocalPlayerAlive() and getActiveTarget() then tpBehindTarget(); pressKey(Enum.KeyCode.Four, 0.05); task.wait(yujiSkillDelay) end
-         else task.wait(0.1) end
+            if yujiComboToggle and isLocalPlayerAlive() and getActiveTarget() then tpBehindTarget(); pressKey(Enum.KeyCode.One, 0.01); task.wait(yujiSkillDelay) end
+            if yujiComboToggle and isLocalPlayerAlive() and getActiveTarget() then tpBehindTarget(); pressKey(Enum.KeyCode.Two, 0.01); task.wait(yujiSkillDelay) end
+            if yujiComboToggle and isLocalPlayerAlive() and getActiveTarget() then tpBehindTarget(); pressKey(Enum.KeyCode.Three, 0.01); task.wait(yujiSkillDelay) end
+            if yujiComboToggle and isLocalPlayerAlive() and getActiveTarget() then tpBehindTarget(); pressKey(Enum.KeyCode.Four, 0.01); task.wait(yujiSkillDelay) end
+         else task.wait(0.05) end
       else task.wait(0.1) end
    end
 end)
@@ -392,7 +436,10 @@ end)
 
 task.spawn(function()
    while true do
-      if autoBlockToggle and not isEscapeActive and isLocalPlayerAlive() then VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game) end
+      -- Sadece AutoBlock açıksa sürekli F basılı tutar. AutoParry açıksa o kendi yönetir.
+      if autoBlockToggle and not isEscapeActive and isLocalPlayerAlive() and not autoParryToggle then 
+         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game) 
+      end
       task.wait(0.1)
    end
 end)
@@ -433,15 +480,14 @@ task.spawn(function()
             end
 
             tpBehindTarget()
-            if autoGuardBreakToggle and isTargetBlocking() then VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game); clickM2(); task.wait(0.08) end
+            if autoGuardBreakToggle and isTargetBlocking() then clickM2(); task.wait(0.05) end
 
             local keys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
             for _, key in ipairs(keys) do
                if not autoAttackLoop or isEscapeActive or not isLocalPlayerAlive() or not getActiveTarget() then break end
                tpBehindTarget()
                if autoGuardBreakToggle and isTargetBlocking() then clickM2() end
-               VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
-               pressKey(key, 0.06)
+               pressKey(key, 0.02)
                task.wait(comboDelay)
             end
 
@@ -468,7 +514,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 end)
 
 -------------------------------------------------------------------------
--- UI ELEMANLARI (TAB 1: Auto Combat)
+-- UI ELEMANLARI
 -------------------------------------------------------------------------
 MainTab:CreateSection("Savaş & Hedefleme")
 
@@ -532,47 +578,10 @@ UIFlags.AutoG = MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
-   Name = "Sürekli Auto M1 (Aralıksız Tıkla)",
+   Name = "Sürekli Auto M1 (Işık Hızında Tıkla)",
    CurrentValue = false,
    Flag = "StandaloneM1Flag",
    Callback = function(Value) standaloneAutoM1 = Value end,
-})
-
-MainTab:CreateToggle({
-   Name = "Twin Speed (200 Yüksek Hız)",
-   CurrentValue = false,
-   Flag = "TwinSpeedToggleFlag",
-   Callback = function(Value)
-      twinSpeedToggle = Value
-      if not Value then
-         local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-         if hum then hum.WalkSpeed = 16 end
-      end
-   end,
-})
-
-MainTab:CreateSection("Yuji Itadori Özel Kombo")
-
-UIFlags.YujiCombo = MainTab:CreateToggle({
-   Name = "Yuji Auto Combo (3x M1 -> 1 -> 2 -> 3 -> 4)",
-   CurrentValue = false,
-   Flag = "YujiComboFlag",
-   Callback = function(Value)
-      yujiComboToggle = Value
-      if Value then
-         if UIFlags.GenelAuto then UIFlags.GenelAuto:Set(false) end
-      end
-   end,
-})
-
-MainTab:CreateSlider({
-   Name = "Yuji Yetenek Bekleme Süresi (Sn)",
-   Range = {0.1, 1},
-   Increment = 0.05,
-   Suffix = " sn",
-   CurrentValue = 0.35,
-   Flag = "YujiDelaySlider",
-   Callback = function(Value) yujiSkillDelay = Value end,
 })
 
 MainTab:CreateSection("Hitbox Ayarları")
@@ -587,81 +596,29 @@ MainTab:CreateToggle({
    end,
 })
 
-MainTab:CreateSlider({
-   Name = "Hitbox Boyutu (Stud)",
-   Range = {2, 50},
-   Increment = 1,
-   Suffix = " Stud",
-   CurrentValue = 15,
-   Flag = "HitboxSizeFlag",
-   Callback = function(Value) hitboxSize = Value end,
-})
-
-MainTab:CreateSlider({
-   Name = "Hitbox Saydamlığı",
-   Range = {0, 1},
-   Increment = 0.1,
-   Suffix = "",
-   CurrentValue = 0.7,
-   Flag = "HitboxTransFlag",
-   Callback = function(Value) hitboxTransparency = Value end,
-})
-
 -------------------------------------------------------------------------
--- YENİ UI ELEMANLARI (TAB 2: Test (Dummy))
--------------------------------------------------------------------------
-TestTab:CreateSection("Dummy (NPC) Hedefleme Modu")
+SafetyTab:CreateSection("Blok & Defans Ayarları")
 
-TestTab:CreateToggle({
-   Name = "Sadece Dummy'lere Kilitlen (Oyuncuları Yoksay)",
+SafetyTab:CreateToggle({
+   Name = "🧠 AKILLI BLOK (Auto Parry / Skill Algılayıcı)",
    CurrentValue = false,
-   Flag = "DummyTargetFlag",
-   Callback = function(Value)
-      dummyTargetToggle = Value
-      if Value then
-         currentTargetPlayer = nil
-         Rayfield:Notify({
-            Title = "Test Modu Aktif",
-            Content = "Artık sadece Dummy NPC'lere saldırılacak.",
-            Duration = 3,
-            Image = 4483362458,
-         })
-      else
-         currentDummyTarget = nil
-         updateAndGetTargetPlayer()
-         Rayfield:Notify({
-            Title = "Test Modu Kapalı",
-            Content = "Hedefleme gerçek oyunculara döndü.",
-            Duration = 3,
-            Image = 4483362458,
-         })
-      end
-   end,
+   Flag = "AutoParryFlag",
+   Callback = function(Value) autoParryToggle = Value end,
+})
+SafetyTab:CreateParagraph({Title = "Bilgi", Content = "Düşman M1 veya Skill kullandığında anında algılayarak otomatik blok basar."})
+
+SafetyTab:CreateToggle({
+   Name = "🛡️ Blok Tutarken Vur (Kesintisiz Defans+Saldırı)",
+   CurrentValue = false,
+   Flag = "AttackWhileBlockingFlag",
+   Callback = function(Value) attackWhileBlocking = Value end,
 })
 
-TestTab:CreateParagraph({
-    Title = "Bilgi",
-    Content = "Bu ayarı açtığınızda Auto Farm, Arkaya Işınlanma ve Aimbot özellikleri haritadaki gerçek oyuncuları görmezden gelir. Onun yerine 'Dummy' ismine sahip antrenman NPC'lerini bulur ve komboları onun üzerinde test etmenizi sağlar."
-})
-
--------------------------------------------------------------------------
--- UI ELEMANLARI (TAB 3: Güvenlik & Blok)
--------------------------------------------------------------------------
 SafetyTab:CreateToggle({
    Name = "Otomatik Blok Kırma (Auto Guard Break - M2)",
    CurrentValue = true,
    Flag = "AutoGuardBreakFlag",
    Callback = function(Value) autoGuardBreakToggle = Value end,
-})
-
-SafetyTab:CreateToggle({
-   Name = "Uzay Koruması (%15 Göğe TP / %30 Dön)",
-   CurrentValue = false,
-   Flag = "SpaceSafetyFlag",
-   Callback = function(Value)
-      healthSafetyToggle = Value
-      if not Value then isEscapeActive = false end
-   end,
 })
 
 SafetyTab:CreateToggle({
@@ -674,60 +631,46 @@ SafetyTab:CreateToggle({
    end,
 })
 
-SafetyTab:CreateSection("Ayar & Gecikmeler")
-
-SafetyTab:CreateSlider({
-   Name = "Auto G Basma Sıklığı (Sn)",
-   Range = {0.5, 10},
-   Increment = 0.5,
-   Suffix = " sn",
-   CurrentValue = 2.0,
-   Flag = "GDelaySlider",
-   Callback = function(Value) gDelay = Value end,
+SafetyTab:CreateToggle({
+   Name = "Uzay Koruması (%15 Göğe TP / %30 Dön)",
+   CurrentValue = false,
+   Flag = "SpaceSafetyFlag",
+   Callback = function(Value)
+      healthSafetyToggle = Value
+      if not Value then isEscapeActive = false end
+   end,
 })
 
-SafetyTab:CreateSlider({
-   Name = "Twin Speed Hız Değeri",
-   Range = {16, 500},
-   Increment = 10,
-   Suffix = " Speed",
-   CurrentValue = 200,
-   Flag = "TwinSpeedSlider",
-   Callback = function(Value) twinSpeedValue = Value end,
-})
+SafetyTab:CreateSection("Gecikme & Hız Ayarları")
 
 SafetyTab:CreateSlider({
-   Name = "Arka Mesafe (Studs)",
-   Range = {1, 10},
-   Increment = 0.5,
-   Suffix = " Stud",
-   CurrentValue = 2.5,
-   Flag = "DistanceSlider",
-   Callback = function(Value) behindDistance = Value end,
-})
-
-SafetyTab:CreateSlider({
-   Name = "M1 Vuruş Hızı (Sn)",
-   Range = {0.05, 0.5},
+   Name = "M1 Vuruş Hızı (Sn) [0 = Işık Hızı]",
+   Range = {0.00, 0.50},
    Increment = 0.01,
    Suffix = " sn",
-   CurrentValue = 0.10,
+   CurrentValue = 0.00,
    Flag = "M1DelaySlider",
    Callback = function(Value) m1Delay = Value end,
 })
 
 SafetyTab:CreateSlider({
    Name = "Yetenek Gecikmesi (Sn)",
-   Range = {0.1, 1},
-   Increment = 0.05,
+   Range = {0.01, 1},
+   Increment = 0.01,
    Suffix = " sn",
-   CurrentValue = 0.20,
+   CurrentValue = 0.15,
    Flag = "DelaySlider",
    Callback = function(Value) comboDelay = Value end,
 })
 
 -------------------------------------------------------------------------
--- UI ELEMANLARI (TAB 4: Whitelist)
+TestTab:CreateSection("Dummy (NPC) Hedefleme Modu")
+TestTab:CreateToggle({
+   Name = "Sadece Dummy'lere Kilitlen (Oyuncuları Yoksay)",
+   CurrentValue = false,
+   Flag = "DummyTargetFlag",
+   Callback = function(Value) dummyTargetToggle = Value end,
+})
 -------------------------------------------------------------------------
 WhitelistTab:CreateInput({
    Name = "Oyuncu Adı (Username / DisplayName)",
@@ -735,53 +678,13 @@ WhitelistTab:CreateInput({
    RemoveTextAfterFocusLost = false,
    Callback = function(Text) whitelistInputName = Text end,
 })
-
 WhitelistTab:CreateButton({
    Name = "Whitelist'e Ekle (Dost Ekle)",
    Callback = function()
       if whitelistInputName ~= "" then
          table.insert(whitelist, whitelistInputName)
-         Rayfield:Notify({
-            Title = "Whitelist",
-            Content = whitelistInputName .. " whitelist listesine eklendi!",
-            Duration = 3,
-            Image = 4483362458,
-         })
          currentTargetPlayer = nil
          updateAndGetTargetPlayer()
       end
-   end,
-})
-
-WhitelistTab:CreateButton({
-   Name = "Whitelist'ten Çıkar",
-   Callback = function()
-      if whitelistInputName ~= "" then
-         for i, name in ipairs(whitelist) do
-            if string.lower(name) == string.lower(whitelistInputName) then
-               table.remove(whitelist, i)
-               Rayfield:Notify({
-                  Title = "Whitelist",
-                  Content = whitelistInputName .. " listeden çıkarıldı!",
-                  Duration = 3,
-                  Image = 4483362458,
-               })
-               break
-            end
-         end
-      end
-   end,
-})
-
-WhitelistTab:CreateButton({
-   Name = "Tüm Whitelist'i Temizle",
-   Callback = function()
-      whitelist = {}
-      Rayfield:Notify({
-         Title = "Whitelist",
-         Content = "Tüm dost listesi temizlendi!",
-         Duration = 3,
-         Image = 4483362458,
-      })
    end,
 })
