@@ -12,7 +12,9 @@ local SafetyTab = Window:CreateTab("Güvenlik & Blok", 4483362458)
 
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
 
 -- Ayarlar
 local targetPlayerName = ""
@@ -28,30 +30,33 @@ local autoBehindLock = false
 local autoBlockToggle = false
 local healthSafetyToggle = false
 local autoGuardBreakToggle = true
+local aimbotToggle = false
 
 local isEscapeActive = false
 local currentTargetPlayer = nil
 
--- CANLI OYUN CU KONTROLÜ
+-- GEÇERLİ VE CANLI OYUNCU KONTROLÜ (BUG ENGELLEYİCİ)
 local function isPlayerAlive(player)
-   if player and player.Parent and player.Character then
+   if player and player.Parent and player.Character and player.Character:IsDescendantOf(Workspace) then
       local hum = player.Character:FindFirstChildOfClass("Humanoid")
       local root = player.Character:FindFirstChild("HumanoidRootPart") or player.Character:FindFirstChild("Torso")
-      if hum and root and hum.Health > 0 then
+      if hum and root and hum.Health > 0 and hum:GetState() ~= Enum.HumanoidStateType.Dead then
          return true
       end
    end
    return false
 end
 
--- DİNAMİK HEDEF SEÇİCİ
+-- DİNAMİK HEDEF SEÇİCİ (STABLE RESET)
 local function updateAndGetTarget()
    if isPlayerAlive(currentTargetPlayer) then
       return currentTargetPlayer
    end
 
+   -- Eski hedef öldüyse/çıktıysa sıfırla
    currentTargetPlayer = nil
 
+   -- 1. Özel İsim Arama
    if not useRandomTarget and targetPlayerName ~= "" then
       for _, player in ipairs(Players:GetPlayers()) do
          if player ~= LocalPlayer and isPlayerAlive(player) then
@@ -64,14 +69,16 @@ local function updateAndGetTarget()
       end
    end
 
+   -- 2. En Yakın Canlı Oyuncuyu Bulma
    local closestPlayer = nil
    local shortestDistance = math.huge
    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 
    for _, player in ipairs(Players:GetPlayers()) do
       if player ~= LocalPlayer and isPlayerAlive(player) then
-         if myRoot then
-            local dist = (player.Character.HumanoidRootPart.Position - myRoot.Position).Magnitude
+         local tRoot = player.Character:FindFirstChild("HumanoidRootPart")
+         if myRoot and tRoot then
+            local dist = (tRoot.Position - myRoot.Position).Magnitude
             if dist < shortestDistance then
                shortestDistance = dist
                closestPlayer = player
@@ -85,14 +92,14 @@ local function updateAndGetTarget()
 
    currentTargetPlayer = closestPlayer
    if currentTargetPlayer then
-      Rayfield:Notify({Title = "Yeni Hedef Kilitlendi!", Content = "Hedef: " .. currentTargetPlayer.Name, Duration = 2})
+      Rayfield:Notify({Title = "Yeni Hedef Kilitlendi!", Content = "Hedef: " .. currentTargetPlayer.Name, Duration = 1.5})
    end
    return currentTargetPlayer
 end
 
 local function getTargetTorso()
    local target = updateAndGetTarget()
-   if target and target.Character then
+   if target and isPlayerAlive(target) then
       return target.Character:FindFirstChild("HumanoidRootPart") or target.Character:FindFirstChild("Torso")
    end
    return nil
@@ -100,7 +107,7 @@ end
 
 local function isTargetBlocking()
    local target = updateAndGetTarget()
-   if target and target.Character then
+   if target and isPlayerAlive(target) then
       local char = target.Character
       if char:FindFirstChild("Blocking") or char:FindFirstChild("Block") or char:FindFirstChild("Guard") then
          return true
@@ -137,6 +144,7 @@ local function unfreezeInAir(root)
    end
 end
 
+-- HEDEFE VE HEDEFE DOĞRU KAMERA KİLİTLENMESİ (AIMBOT)
 local function tpBehindTarget()
    if isEscapeActive then return false end
    
@@ -144,16 +152,18 @@ local function tpBehindTarget()
    local character = LocalPlayer.Character
    local myRoot = character and character:FindFirstChild("HumanoidRootPart")
 
-   if targetTorso and myRoot then
+   if targetTorso and myRoot and isPlayerAlive(currentTargetPlayer) then
       local velocity = targetTorso.AssemblyLinearVelocity or targetTorso.Velocity
       local predictPos = targetTorso.Position + (velocity * 0.03)
       local behindPosition = predictPos - (targetTorso.CFrame.LookVector * behindDistance)
+      
       myRoot.CFrame = CFrame.lookAt(behindPosition, targetTorso.Position)
       return true
    end
    return false
 end
 
+-- TIKLAMA & TUŞ BASMA
 local function pressKey(keyCode, holdTime)
    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
    task.wait(holdTime or 0.05)
@@ -172,7 +182,23 @@ local function clickM2()
    VirtualInputManager:SendMouseButtonEvent(0, 0, 1, false, game, 0)
 end
 
--- %15 CAN UZAYA KAÇMA & %30 CANDA DÖNME MOTORU
+-- AIMBOT CAMERA LOOP
+task.spawn(function()
+   while true do
+      if (aimbotToggle or autoAttackLoop) and not isEscapeActive then
+         local target = updateAndGetTarget()
+         if target and isPlayerAlive(target) then
+            local head = target.Character:FindFirstChild("Head") or target.Character:FindFirstChild("HumanoidRootPart")
+            if head then
+               Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, head.Position)
+            end
+         end
+      end
+      task.wait(0.01)
+   end
+end)
+
+-- %15 CAN UZAYA KAÇMA & %30 CANDA DÖNME
 task.spawn(function()
    while true do
       if healthSafetyToggle then
@@ -199,7 +225,7 @@ task.spawn(function()
    end
 end)
 
--- AUTO BLOCK (F BASMA)
+-- AUTO BLOCK
 task.spawn(function()
    while true do
       if autoBlockToggle and not isEscapeActive then
@@ -235,13 +261,13 @@ task.spawn(function()
    end
 end)
 
--- AKILLI TAM SAVAŞ DÖNGÜSÜ (1-2-3-4 + M1)
+-- SÜREKLİ AKILLI KOMBO VE SALDIRI DÖNGÜSÜ
 task.spawn(function()
    while true do
       if autoAttackLoop and not isEscapeActive then
-         local targetTorso = getTargetTorso()
+         local target = updateAndGetTarget()
 
-         if targetTorso then
+         if target and isPlayerAlive(target) then
             tpBehindTarget()
 
             if autoGuardBreakToggle and isTargetBlocking() then
@@ -276,7 +302,7 @@ task.spawn(function()
                task.wait(m1Delay)
             end
          else
-            task.wait(0.5)
+            task.wait(0.2)
          end
       end
       task.wait(0.02)
@@ -300,6 +326,15 @@ MainTab:CreateInput({
          currentTargetPlayer = nil
          updateAndGetTarget()
       end
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "Kamera Aimbot (Hedefe Kilitlen)",
+   CurrentValue = false,
+   Flag = "AimbotToggleFlag",
+   Callback = function(Value)
+      aimbotToggle = Value
    end,
 })
 
