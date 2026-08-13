@@ -513,6 +513,84 @@ end)
 -- UI ELEMANLARI (Aynı Kalıyor)
 -- ... (MainTab, SafetyTab, WhitelistTab Kodları)
 
+MainTab:CreateSection("Savaş & Hedefleme")
+
+MainTab:CreateInput({
+   Name = "Hedef Oyuncu Adı (Boşsa En Yakın)",
+   PlaceholderText = "İsim yaz veya boş bırak...",
+   RemoveTextAfterFocusLost = false,
+   Callback = function(Text)
+      targetPlayerName = Text
+      currentTargetPlayer = nil
+      useRandomTarget = (Text == "")
+      updateAndGetTarget()
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "Hedefin Sırtına Anında Işınlan (Instant TP Lock)",
+   CurrentValue = false,
+   Flag = "AutoBehindLockFlag",
+   Callback = function(Value)
+      autoBehindLock = Value
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "Twin Speed (200 Yüksek Hız)",
+   CurrentValue = false,
+   Flag = "TwinSpeedToggleFlag",
+   Callback = function(Value)
+      twinSpeedToggle = Value
+      if not Value then
+         local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+         if hum then hum.WalkSpeed = 16 end
+      end
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "Kamera Aimbot (Hedefe Kilitlen)",
+   CurrentValue = false,
+   Flag = "AimbotToggleFlag",
+   Callback = function(Value)
+      aimbotToggle = Value
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "Sürekli Auto M1 (Aralıksız Tıkla)",
+   CurrentValue = false,
+   Flag = "StandaloneM1Flag",
+   Callback = function(Value)
+      standaloneAutoM1 = Value
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "Otomatik G Bas (Auto Awakening/Ultimate)",
+   CurrentValue = false,
+   Flag = "AutoGToggleFlag",
+   Callback = function(Value)
+      autoGToggle = Value
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "Genel Auto Combat",
+   CurrentValue = false,
+   Flag = "AutoAttackLoopFlag",
+   Callback = function(Value)
+      autoAttackLoop = Value
+      if Value then
+         yujiComboToggle = false
+         currentTargetPlayer = nil
+         updateAndGetTarget()
+      end
+   end,
+})
+
+
 MainTab:CreateSection("Yuji Itadori Özel Kombo")
 
 MainTab:CreateToggle({
@@ -577,82 +655,7 @@ MainTab:CreateSlider({
    end,
 })
 
-MainTab:CreateSection("Savaş & Hedefleme")
-
-MainTab:CreateInput({
-   Name = "Hedef Oyuncu Adı (Boşsa En Yakın)",
-   PlaceholderText = "İsim yaz veya boş bırak...",
-   RemoveTextAfterFocusLost = false,
-   Callback = function(Text)
-      targetPlayerName = Text
-      currentTargetPlayer = nil
-      useRandomTarget = (Text == "")
-      updateAndGetTarget()
-   end,
-})
-
-MainTab:CreateToggle({
-   Name = "Otomatik G Bas (Auto Awakening/Ultimate)",
-   CurrentValue = false,
-   Flag = "AutoGToggleFlag",
-   Callback = function(Value)
-      autoGToggle = Value
-   end,
-})
-
-MainTab:CreateToggle({
-   Name = "Twin Speed (200 Yüksek Hız)",
-   CurrentValue = false,
-   Flag = "TwinSpeedToggleFlag",
-   Callback = function(Value)
-      twinSpeedToggle = Value
-      if not Value then
-         local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-         if hum then hum.WalkSpeed = 16 end
-      end
-   end,
-})
-
-MainTab:CreateToggle({
-   Name = "Kamera Aimbot (Hedefe Kilitlen)",
-   CurrentValue = false,
-   Flag = "AimbotToggleFlag",
-   Callback = function(Value)
-      aimbotToggle = Value
-   end,
-})
-
-MainTab:CreateToggle({
-   Name = "Sürekli Auto M1 (Aralıksız Tıkla)",
-   CurrentValue = false,
-   Flag = "StandaloneM1Flag",
-   Callback = function(Value)
-      standaloneAutoM1 = Value
-   end,
-})
-
-MainTab:CreateToggle({
-   Name = "Hedefin Sırtına Anında Işınlan (Instant TP Lock)",
-   CurrentValue = false,
-   Flag = "AutoBehindLockFlag",
-   Callback = function(Value)
-      autoBehindLock = Value
-   end,
-})
-
-MainTab:CreateToggle({
-   Name = "Genel Auto Combat",
-   CurrentValue = false,
-   Flag = "AutoAttackLoopFlag",
-   Callback = function(Value)
-      autoAttackLoop = Value
-      if Value then
-         yujiComboToggle = false
-         currentTargetPlayer = nil
-         updateAndGetTarget()
-      end
-   end,
-})
+ 
 
 SafetyTab:CreateToggle({
    Name = "Otomatik Blok Kırma (Auto Guard Break - M2)",
