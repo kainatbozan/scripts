@@ -13,6 +13,8 @@ local SafetyTab = Window:CreateTab("Güvenlik & Blok", 4483362458)
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
@@ -21,8 +23,8 @@ local targetPlayerName = ""
 local useRandomTarget = true
 local behindDistance = 2.5
 local m1Count = 4
-local comboDelay = 0.25
-local m1Delay = 0.12
+local comboDelay = 0.20
+local m1Delay = 0.10
 
 local autoAttackLoop = false
 local standaloneAutoM1 = false
@@ -35,32 +37,46 @@ local aimbotToggle = false
 local isEscapeActive = false
 local currentTargetPlayer = nil
 
--- CANLI OYUNCU KONTROLÜ
+-- KESİN CANLILIK KONTROLÜ (Ragdoll ve Kırık Karakter Engelleme)
 local function isPlayerAlive(player)
-   if player and player.Parent and player.Character and player.Character:IsDescendantOf(Workspace) then
-      local hum = player.Character:FindFirstChildOfClass("Humanoid")
-      local root = player.Character:FindFirstChild("HumanoidRootPart") or player.Character:FindFirstChild("Torso")
-      if hum and root and hum.Health > 0 and hum:GetState() ~= Enum.HumanoidStateType.Dead then
-         return true
-      end
+   if not player or not player.Parent then return false end
+   local char = player.Character
+   if not char or not char:IsDescendantOf(Workspace) then return false end
+
+   local hum = char:FindFirstChildOfClass("Humanoid")
+   local root = char:FindFirstChild("HumanoidRootPart")
+
+   if not hum or not root then return false end
+   if hum.Health <= 0 then return false end
+   
+   -- JJK Özel Ragdoll / Knockout Kontrolü
+   if char:FindFirstChild("Knocked") or char:FindFirstChild("Ragdoll") or char:FindFirstChild("Dead") then
+      return false
    end
-   return false
+
+   local state = hum:GetState()
+   if state == Enum.HumanoidStateType.Dead or state == Enum.HumanoidStateType.Physics then
+      return false
+   end
+
+   return true
 end
 
--- DİNAMİK HEDEF SEÇİCİ (MESAFERE BAKMAKSIZIN TÜM HARİTADA EN YAKIN / RASTGELE)
+-- RAKİP SIFIRLAMA VE YENİ HEDEF KİLİTLENME
 local function updateAndGetTarget()
    if isPlayerAlive(currentTargetPlayer) then
       return currentTargetPlayer
    end
 
+   -- Önceki hedef ölmüş veya geçersizleşmişse ANINDA SIFIRLA
    currentTargetPlayer = nil
 
-   -- 1. Özel İsim Arama
+   -- 1. İsimle Arama
    if not useRandomTarget and targetPlayerName ~= "" then
       for _, player in ipairs(Players:GetPlayers()) do
          if player ~= LocalPlayer and isPlayerAlive(player) then
-            if string.sub(string.lower(player.Name), 1, #targetPlayerName) == string.lower(targetPlayerName) or
-               string.sub(string.lower(player.DisplayName), 1, #targetPlayerName) == string.lower(targetPlayerName) then
+            if string.find(string.lower(player.Name), string.lower(targetPlayerName)) or
+               string.find(string.lower(player.DisplayName), string.lower(targetPlayerName)) then
                currentTargetPlayer = player
                return currentTargetPlayer
             end
@@ -68,18 +84,18 @@ local function updateAndGetTarget()
       end
    end
 
-   -- 2. Herhangi Bir Canlı Oyuncuyu Bulma (Haritadaki En Yakın)
+   -- 2. Rastgele / En Yakın Canlı Hedef
    local closestPlayer = nil
-   local shortestDistance = math.huge
+   local shortestDist = math.huge
    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 
    for _, player in ipairs(Players:GetPlayers()) do
       if player ~= LocalPlayer and isPlayerAlive(player) then
-         local tRoot = player.Character:FindFirstChild("HumanoidRootPart")
+         local tRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
          if myRoot and tRoot then
             local dist = (tRoot.Position - myRoot.Position).Magnitude
-            if dist < shortestDistance then
-               shortestDistance = dist
+            if dist < shortestDist then
+               shortestDist = dist
                closestPlayer = player
             end
          else
@@ -90,16 +106,13 @@ local function updateAndGetTarget()
    end
 
    currentTargetPlayer = closestPlayer
-   if currentTargetPlayer then
-      Rayfield:Notify({Title = "Yeni Hedef Bulundu!", Content = "Kilitlenilen: " .. currentTargetPlayer.Name, Duration = 1.5})
-   end
    return currentTargetPlayer
 end
 
 local function getTargetTorso()
    local target = updateAndGetTarget()
    if target and isPlayerAlive(target) then
-      return target.Character:FindFirstChild("HumanoidRootPart") or target.Character:FindFirstChild("Torso")
+      return target.Character:FindFirstChild("HumanoidRootPart")
    end
    return nil
 end
@@ -124,132 +137,90 @@ local function isTargetBlocking()
    return false
 end
 
--- UZAYDA SABİTLEME VE SERBEST BIRAKMA
-local function applySpaceFreeze()
-   local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-   if myRoot then
-      local bv = myRoot:FindFirstChild("JJKSpaceBV") or Instance.new("BodyVelocity")
-      bv.Name = "JJKSpaceBV"
-      bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-      bv.Velocity = Vector3.new(0, 0, 0)
-      bv.Parent = myRoot
-   end
-end
-
-local function removeSpaceFreeze()
-   local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-   if myRoot then
-      local bv = myRoot:FindFirstChild("JJKSpaceBV")
-      if bv then bv:Destroy() end
-   end
-end
-
--- HEDEFE DOĞRU HIZLI IŞINLANMA
+-- DİNAMİK TP (IŞINLANMA)
 local function tpBehindTarget()
    if isEscapeActive then return false end
-   
-   local targetTorso = getTargetTorso()
-   local character = LocalPlayer.Character
-   local myRoot = character and character:FindFirstChild("HumanoidRootPart")
 
-   if targetTorso and myRoot and isPlayerAlive(currentTargetPlayer) then
-      local velocity = targetTorso.AssemblyLinearVelocity or targetTorso.Velocity
-      local predictPos = targetTorso.Position + (velocity * 0.03)
+   local targetTorso = getTargetTorso()
+   local myChar = LocalPlayer.Character
+   local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+
+   if targetTorso and myRoot then
+      local velocity = targetTorso.AssemblyLinearVelocity or Vector3.zero
+      local predictPos = targetTorso.Position + (velocity * 0.02)
       local behindPosition = predictPos - (targetTorso.CFrame.LookVector * behindDistance)
-      
+
       myRoot.CFrame = CFrame.lookAt(behindPosition, targetTorso.Position)
       return true
    end
    return false
 end
 
+-- TUŞ GİRDİLERİ
 local function pressKey(keyCode, holdTime)
    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
-   task.wait(holdTime or 0.05)
+   task.wait(holdTime or 0.04)
    VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
 end
 
 local function clickM1()
    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-   task.wait(0.03)
+   task.wait(0.02)
    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
 end
 
 local function clickM2()
    VirtualInputManager:SendMouseButtonEvent(0, 0, 1, true, game, 0)
-   task.wait(0.05)
+   task.wait(0.04)
    VirtualInputManager:SendMouseButtonEvent(0, 0, 1, false, game, 0)
 end
 
--- AIMBOT CAMERA LOOP
-task.spawn(function()
-   while true do
-      if (aimbotToggle or autoAttackLoop) and not isEscapeActive then
-         local target = updateAndGetTarget()
-         if target and isPlayerAlive(target) then
-            local head = target.Character:FindFirstChild("Head") or target.Character:FindFirstChild("HumanoidRootPart")
-            if head then
-               Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, head.Position)
-            end
-         end
-      end
-      task.wait(0.01)
-   end
-end)
+-- RENDERSTEPPED DÖNGÜSÜ: AIMBOT & TAKİP & CAN KONTROLÜ (HER KAREDE ÇALIŞIR)
+RunService.RenderStepped:Connect(function()
+   -- 1. CAN KORUMASI (%15)
+   if healthSafetyToggle then
+      local myChar = LocalPlayer.Character
+      local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+      local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
 
--- %15 CAN KORUMASI (GÖĞE KAÇMA SİSTEMİ) - DÜZELTİLDİ
-task.spawn(function()
-   while true do
-      if healthSafetyToggle then
-         local character = LocalPlayer.Character
-         local hum = character and character:FindFirstChildOfClass("Humanoid")
-         local myRoot = character and character:FindFirstChild("HumanoidRootPart")
+      if hum and myRoot and hum.Health > 0 then
+         local hpPercent = (hum.Health / hum.MaxHealth) * 100
 
-         if hum and myRoot and hum.Health > 0 then
-            local healthPercent = (hum.Health / hum.MaxHealth) * 100
-
-            if healthPercent <= 15 and not isEscapeActive then
-               isEscapeActive = true
-               myRoot.CFrame = myRoot.CFrame + Vector3.new(0, 300, 0)
-               applySpaceFreeze()
-               Rayfield:Notify({Title = "GÜVENLİK AKTİF!", Content = "Can %15 Altı! Göğe Yükselindi.", Duration = 3})
-            elseif healthPercent >= 30 and isEscapeActive then
-               isEscapeActive = false
-               removeSpaceFreeze()
-               Rayfield:Notify({Title = "SAVAŞA DÖNÜLDÜ", Content = "Can %30 Oldu! Yeniden Saldırılıyor.", Duration = 3})
-            elseif isEscapeActive then
-               applySpaceFreeze() -- Havada tutmaya devam et
-            end
-         end
-      else
-         if isEscapeActive then
+         if hpPercent <= 15 then
+            isEscapeActive = true
+            -- Düşmeyi tamamen engellemek için doğrudan Y ekseninde hızı sıfırla ve CFrame ile yukarıda tut
+            myRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            myRoot.CFrame = CFrame.new(myRoot.Position.X, 500, myRoot.Position.Z)
+         elseif hpPercent >= 30 and isEscapeActive then
             isEscapeActive = false
-            removeSpaceFreeze()
          end
       end
-      task.wait(0.1)
+   end
+
+   -- 2. AIMBOT (KAMERA KİLİTLENMESİ)
+   if (aimbotToggle or autoAttackLoop) and not isEscapeActive then
+      local target = updateAndGetTarget()
+      if target and isPlayerAlive(target) then
+         local head = target.Character:FindFirstChild("Head") or target.Character:FindFirstChild("HumanoidRootPart")
+         if head then
+            Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, head.Position)
+         end
+      end
+   end
+
+   -- 3. LOCK BEHIND
+   if autoBehindLock and not isEscapeActive and not autoAttackLoop then
+      tpBehindTarget()
    end
 end)
 
--- AUTO BLOCK
+-- AUTO BLOCK DÖNGÜSÜ
 task.spawn(function()
    while true do
       if autoBlockToggle and not isEscapeActive then
          VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-      else
-         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
       end
       task.wait(0.1)
-   end
-end)
-
--- SADECE ARKADA KALMA DÖNGÜSÜ
-task.spawn(function()
-   while true do
-      if autoBehindLock and not isEscapeActive and not autoAttackLoop then
-         tpBehindTarget()
-      end
-      task.wait(0.01)
    end
 end)
 
@@ -267,7 +238,7 @@ task.spawn(function()
    end
 end)
 
--- SÜREKLİ TAM SAVAŞ DÖNGÜSÜ
+-- TAM SAVAŞ DÖNGÜSÜ
 task.spawn(function()
    while true do
       if autoAttackLoop and not isEscapeActive then
@@ -279,27 +250,27 @@ task.spawn(function()
             if autoGuardBreakToggle and isTargetBlocking() then
                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
                clickM2()
-               task.wait(0.1)
+               task.wait(0.08)
             end
 
             local keys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
             for _, key in ipairs(keys) do
                if not autoAttackLoop or isEscapeActive or not isPlayerAlive(currentTargetPlayer) then break end
                tpBehindTarget()
-               
+
                if autoGuardBreakToggle and isTargetBlocking() then
                   clickM2()
                end
 
                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
-               pressKey(key, 0.08)
+               pressKey(key, 0.06)
                task.wait(comboDelay)
             end
 
             for i = 1, m1Count do
                if not autoAttackLoop or isEscapeActive or not isPlayerAlive(currentTargetPlayer) then break end
                tpBehindTarget()
-               
+
                if autoGuardBreakToggle and isTargetBlocking() then
                   clickM2()
                else
@@ -308,10 +279,11 @@ task.spawn(function()
                task.wait(m1Delay)
             end
          else
-            task.wait(0.1)
+            task.wait(0.05)
          end
+      else
+         task.wait(0.1)
       end
-      task.wait(0.02)
    end
 end)
 
@@ -323,15 +295,8 @@ MainTab:CreateInput({
    RemoveTextAfterFocusLost = false,
    Callback = function(Text)
       targetPlayerName = Text
-      if Text == "" then
-         useRandomTarget = true
-         currentTargetPlayer = nil
-         Rayfield:Notify({Title = "Mod Değişti", Content = "Rastgele oyuncu moduna geçildi.", Duration = 2})
-      else
-         useRandomTarget = false
-         currentTargetPlayer = nil
-         updateAndGetTarget()
-      end
+      currentTargetPlayer = nil
+      useRandomTarget = (Text == "")
    end,
 })
 
@@ -392,9 +357,8 @@ SafetyTab:CreateToggle({
    Flag = "SpaceSafetyFlag",
    Callback = function(Value)
       healthSafetyToggle = Value
-      if not Value and isEscapeActive then
+      if not Value then
          isEscapeActive = false
-         removeSpaceFreeze()
       end
    end,
 })
@@ -430,7 +394,7 @@ SafetyTab:CreateSlider({
    Range = {0.05, 0.5},
    Increment = 0.01,
    Suffix = " sn",
-   CurrentValue = 0.12,
+   CurrentValue = 0.10,
    Flag = "M1DelaySlider",
    Callback = function(Value)
       m1Delay = Value
@@ -442,7 +406,7 @@ SafetyTab:CreateSlider({
    Range = {0.1, 1},
    Increment = 0.05,
    Suffix = " sn",
-   CurrentValue = 0.25,
+   CurrentValue = 0.20,
    Flag = "DelaySlider",
    Callback = function(Value)
       comboDelay = Value
