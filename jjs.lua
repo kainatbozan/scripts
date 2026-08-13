@@ -110,7 +110,7 @@ end
 -- RAKİP CANLILIK VE WHITELIST KONTROLÜ
 local function isPlayerAlive(player)
    if not player or not player.Parent then return false end
-   if isWhitelisted(player) then return false end -- Whitelist'tekileri hedef alma/canlı sayma
+   if isWhitelisted(player) then return false end
 
    local char = player.Character
    if not char or not char:IsDescendantOf(Workspace) then return false end
@@ -141,20 +141,21 @@ local function resetHitboxes()
    end
 end
 
--- ÖLÜM VE YENİDEN DOĞMA YÖNETİMİ
+-- ÖLÜM VE YENİDEN DOĞMA YÖNETİMİ (Karakter tam yüklenene kadar bekler)
 LocalPlayer.CharacterAdded:Connect(function(char)
    isRespawning = true
    currentTargetPlayer = nil
    isEscapeActive = false
    
-   local root = char:WaitForChild("HumanoidRootPart", 5)
-   local hum = char:WaitForChild("Humanoid", 5)
+   -- Karakterin parçalarının tam yüklenmesi için güvenli bekleme süresi eklendi
+   char:WaitForChild("HumanoidRootPart", 5)
+   char:WaitForChild("Humanoid", 5)
    
-   task.wait(1)
+   task.wait(2.5) -- Oyuna tam olarak doğmayı beklemesi için gecikme
    isRespawning = false
 end)
 
--- DİNAMİK HEDEF SEÇİCİ (EN YAKIN HEDEFİ OTOMATİK SEÇER)
+-- DİNAMİK HEDEF SEÇİCİ
 local function updateAndGetTarget()
    if not isLocalPlayerAlive() then return nil end
 
@@ -164,7 +165,6 @@ local function updateAndGetTarget()
 
    currentTargetPlayer = nil
 
-   -- 1. Özel İsim Arama
    if not useRandomTarget and targetPlayerName ~= "" then
       for _, player in ipairs(Players:GetPlayers()) do
          if player ~= LocalPlayer and isPlayerAlive(player) then
@@ -177,7 +177,6 @@ local function updateAndGetTarget()
       end
    end
 
-   -- 2. En Yakındaki Canlı Oyuncuyu Seç
    local closestPlayer = nil
    local shortestDist = math.huge
    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -202,7 +201,6 @@ local function updateAndGetTarget()
    return currentTargetPlayer
 end
 
--- İLK GİRİŞTE OTOMATİK EN YAKIN RAKİBE KİLİTLEN
 task.spawn(function()
    task.wait(1.5)
    updateAndGetTarget()
@@ -228,7 +226,7 @@ local function isTargetBlocking()
    return false
 end
 
--- SIRTA IŞINLANMA
+-- GELİŞMİŞ UZAY VE LERP IŞINLANMA (SMOOTH TP)
 local function tpBehindTarget()
    if isEscapeActive or not isLocalPlayerAlive() then return end
 
@@ -240,7 +238,17 @@ local function tpBehindTarget()
       local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
       if tRoot then
          local behindPosition = tRoot.Position - (tRoot.CFrame.LookVector * behindDistance)
-         myRoot.CFrame = CFrame.lookAt(behindPosition, tRoot.Position)
+         local targetCFrame = CFrame.lookAt(behindPosition, tRoot.Position)
+         
+         local dist = (myRoot.Position - targetCFrame.Position).Magnitude
+
+         if dist > 30 then
+            -- Eğer hedef çok uzaktaysa anında ışınlanıp anti-cheat'e yakalanmak yerine ona doğru hızlıca kayar
+            myRoot.CFrame = myRoot.CFrame:Lerp(targetCFrame, 0.15)
+         else
+            -- Eğer hedefe yakınsak anında sırtına yapışır
+            myRoot.CFrame = targetCFrame
+         end
       end
    end
 end
@@ -268,7 +276,6 @@ end
 
 -- RENDERSTEPPED DÖNGÜSÜ
 RunService.RenderStepped:Connect(function()
-   -- Hitbox Büyütme (Whitelisttekilere uygulanmaz)
    if hitboxToggle then
       for _, player in ipairs(Players:GetPlayers()) do
          if player ~= LocalPlayer and player.Character and not isWhitelisted(player) then
@@ -282,7 +289,6 @@ RunService.RenderStepped:Connect(function()
                root.CanCollide = false
             end
          elseif isWhitelisted(player) and player.Character then
-            -- Whitelistteki oyuncunun hitbox'ını orijinal haline getir
             local root = player.Character:FindFirstChild("HumanoidRootPart")
             if root and root.Size.X ~= 2 then
                root.Size = Vector3.new(2, 2, 1)
@@ -304,7 +310,6 @@ RunService.RenderStepped:Connect(function()
 
    if healthSafetyToggle and hum and myRoot then
       local hpPercent = (hum.Health / hum.MaxHealth) * 100
-
       if hpPercent <= 15 then
          isEscapeActive = true
          myRoot.CFrame = CFrame.new(myRoot.Position.X, 500, myRoot.Position.Z)
@@ -328,13 +333,27 @@ RunService.RenderStepped:Connect(function()
    end
 end)
 
--- YUJI SPECIAL COMBO LOOP
+-- YUJI SPECIAL COMBO LOOP (MESAFE KONTROLLÜ)
 task.spawn(function()
    while true do
       if yujiComboToggle and not isEscapeActive and isLocalPlayerAlive() then
          local target = updateAndGetTarget()
 
          if target and isPlayerAlive(target) then
+            local myChar = LocalPlayer.Character
+            local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
+
+            -- MESAFE GÜVENLİK KİLİDİ
+            if myRoot and tRoot then
+               local dist = (myRoot.Position - tRoot.Position).Magnitude
+               if dist > 15 then
+                  tpBehindTarget() -- Sadece hedefe doğru kay/ışınlan
+                  task.wait(0.05)
+                  continue -- Uzaksak skill atmasını ENGELLER ve döngüyü başa sarar.
+               end
+            end
+
             tpBehindTarget()
 
             if autoGuardBreakToggle and isTargetBlocking() then
@@ -401,27 +420,54 @@ task.spawn(function()
    end
 end)
 
--- BAĞIMSIZ AUTO M1
+-- BAĞIMSIZ AUTO M1 (MESAFE KONTROLLÜ)
 task.spawn(function()
    while true do
       if standaloneAutoM1 and not isEscapeActive and isLocalPlayerAlive() then
-         if autoGuardBreakToggle and isTargetBlocking() then
-            clickM2()
-         else
-            clickM1()
+         local target = updateAndGetTarget()
+         if target and isPlayerAlive(target) then
+            local myChar = LocalPlayer.Character
+            local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
+            
+            if myRoot and tRoot and (myRoot.Position - tRoot.Position).Magnitude > 15 then
+               tpBehindTarget()
+               task.wait(0.05)
+               continue
+            end
+
+            if autoGuardBreakToggle and isTargetBlocking() then
+               clickM2()
+            else
+               clickM1()
+            end
          end
       end
       task.wait(m1Delay)
    end
 end)
 
--- GENEL SALDIRI DÖNGÜSÜ
+-- GENEL SALDIRI DÖNGÜSÜ (MESAFE KONTROLLÜ)
 task.spawn(function()
    while true do
       if autoAttackLoop and not yujiComboToggle and not isEscapeActive and isLocalPlayerAlive() then
          local target = updateAndGetTarget()
 
          if target and isPlayerAlive(target) then
+            local myChar = LocalPlayer.Character
+            local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
+
+            -- MESAFE GÜVENLİK KİLİDİ
+            if myRoot and tRoot then
+               local dist = (myRoot.Position - tRoot.Position).Magnitude
+               if dist > 15 then
+                  tpBehindTarget() -- Sadece hedefe doğru kay/ışınlan
+                  task.wait(0.05)
+                  continue -- Uzaksak skill atmasını ENGELLER ve döngüyü başa sarar.
+               end
+            end
+
             tpBehindTarget()
 
             if autoGuardBreakToggle and isTargetBlocking() then
@@ -464,7 +510,8 @@ task.spawn(function()
    end
 end)
 
--- UI ELEMANLARI (TAB 1: Auto Combat)
+-- UI ELEMANLARI (Aynı Kalıyor)
+-- ... (MainTab, SafetyTab, WhitelistTab Kodları)
 
 MainTab:CreateSection("Yuji Itadori Özel Kombo")
 
@@ -607,8 +654,6 @@ MainTab:CreateToggle({
    end,
 })
 
--- UI ELEMANLARI (TAB 2: Güvenlik & Blok)
-
 SafetyTab:CreateToggle({
    Name = "Otomatik Blok Kırma (Auto Guard Break - M2)",
    CurrentValue = true,
@@ -703,8 +748,6 @@ SafetyTab:CreateSlider({
       comboDelay = Value
    end,
 })
-
--- UI ELEMANLARI (TAB 3: Whitelist)
 
 WhitelistTab:CreateInput({
    Name = "Oyuncu Adı (Username / DisplayName)",
