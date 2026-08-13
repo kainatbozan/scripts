@@ -3,7 +3,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({
    Name = "Jujutsu Shenanigans",
    LoadingTitle = "Loading. . .",
-   LoadingSubtitle = "kainatbozanv2",
+   LoadingSubtitle = "kainatbozan",
    ConfigurationSaving = { Enabled = false }
 })
 
@@ -35,7 +35,7 @@ local aimbotToggle = false
 local isEscapeActive = false
 local currentTargetPlayer = nil
 
--- GEÇERLİ VE CANLI OYUNCU KONTROLÜ (BUG ENGELLEYİCİ)
+-- CANLI OYUNCU KONTROLÜ
 local function isPlayerAlive(player)
    if player and player.Parent and player.Character and player.Character:IsDescendantOf(Workspace) then
       local hum = player.Character:FindFirstChildOfClass("Humanoid")
@@ -47,13 +47,12 @@ local function isPlayerAlive(player)
    return false
 end
 
--- DİNAMİK HEDEF SEÇİCİ (STABLE RESET)
+-- DİNAMİK HEDEF SEÇİCİ (MESAFERE BAKMAKSIZIN TÜM HARİTADA EN YAKIN / RASTGELE)
 local function updateAndGetTarget()
    if isPlayerAlive(currentTargetPlayer) then
       return currentTargetPlayer
    end
 
-   -- Eski hedef öldüyse/çıktıysa sıfırla
    currentTargetPlayer = nil
 
    -- 1. Özel İsim Arama
@@ -69,7 +68,7 @@ local function updateAndGetTarget()
       end
    end
 
-   -- 2. En Yakın Canlı Oyuncuyu Bulma
+   -- 2. Herhangi Bir Canlı Oyuncuyu Bulma (Haritadaki En Yakın)
    local closestPlayer = nil
    local shortestDistance = math.huge
    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -92,7 +91,7 @@ local function updateAndGetTarget()
 
    currentTargetPlayer = closestPlayer
    if currentTargetPlayer then
-      Rayfield:Notify({Title = "Yeni Hedef Kilitlendi!", Content = "Hedef: " .. currentTargetPlayer.Name, Duration = 1.5})
+      Rayfield:Notify({Title = "Yeni Hedef Bulundu!", Content = "Kilitlenilen: " .. currentTargetPlayer.Name, Duration = 1.5})
    end
    return currentTargetPlayer
 end
@@ -125,26 +124,27 @@ local function isTargetBlocking()
    return false
 end
 
-local function freezeInAir(root)
-   if not root then return end
-   local bv = root:FindFirstChild("JJKSpaceBV")
-   if not bv then
-      bv = Instance.new("BodyVelocity")
+-- UZAYDA SABİTLEME VE SERBEST BIRAKMA
+local function applySpaceFreeze()
+   local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+   if myRoot then
+      local bv = myRoot:FindFirstChild("JJKSpaceBV") or Instance.new("BodyVelocity")
       bv.Name = "JJKSpaceBV"
       bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
       bv.Velocity = Vector3.new(0, 0, 0)
-      bv.Parent = root
+      bv.Parent = myRoot
    end
 end
 
-local function unfreezeInAir(root)
-   if root then
-      local bv = root:FindFirstChild("JJKSpaceBV")
+local function removeSpaceFreeze()
+   local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+   if myRoot then
+      local bv = myRoot:FindFirstChild("JJKSpaceBV")
       if bv then bv:Destroy() end
    end
 end
 
--- HEDEFE VE HEDEFE DOĞRU KAMERA KİLİTLENMESİ (AIMBOT)
+-- HEDEFE DOĞRU HIZLI IŞINLANMA
 local function tpBehindTarget()
    if isEscapeActive then return false end
    
@@ -163,7 +163,6 @@ local function tpBehindTarget()
    return false
 end
 
--- TIKLAMA & TUŞ BASMA
 local function pressKey(keyCode, holdTime)
    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
    task.wait(holdTime or 0.05)
@@ -198,7 +197,7 @@ task.spawn(function()
    end
 end)
 
--- %15 CAN UZAYA KAÇMA & %30 CANDA DÖNME
+-- %15 CAN KORUMASI (GÖĞE KAÇMA SİSTEMİ) - DÜZELTİLDİ
 task.spawn(function()
    while true do
       if healthSafetyToggle then
@@ -211,17 +210,24 @@ task.spawn(function()
 
             if healthPercent <= 15 and not isEscapeActive then
                isEscapeActive = true
-               myRoot.CFrame = myRoot.CFrame + Vector3.new(0, 150, 0)
-               freezeInAir(myRoot)
-               Rayfield:Notify({Title = "TEHLİKE!", Content = "Can %15 altı! Göğe kaçıldı...", Duration = 3})
+               myRoot.CFrame = myRoot.CFrame + Vector3.new(0, 300, 0)
+               applySpaceFreeze()
+               Rayfield:Notify({Title = "GÜVENLİK AKTİF!", Content = "Can %15 Altı! Göğe Yükselindi.", Duration = 3})
             elseif healthPercent >= 30 and isEscapeActive then
                isEscapeActive = false
-               unfreezeInAir(myRoot)
-               Rayfield:Notify({Title = "SAVAŞA DÖNÜLDÜ", Content = "Can %30! Savaşa devam ediliyor.", Duration = 3})
+               removeSpaceFreeze()
+               Rayfield:Notify({Title = "SAVAŞA DÖNÜLDÜ", Content = "Can %30 Oldu! Yeniden Saldırılıyor.", Duration = 3})
+            elseif isEscapeActive then
+               applySpaceFreeze() -- Havada tutmaya devam et
             end
          end
+      else
+         if isEscapeActive then
+            isEscapeActive = false
+            removeSpaceFreeze()
+         end
       end
-      task.wait(0.2)
+      task.wait(0.1)
    end
 end)
 
@@ -247,7 +253,7 @@ task.spawn(function()
    end
 end)
 
--- BAĞIMSIZ SÜREKLİ AUTO M1 DÖNGÜSÜ
+-- BAĞIMSIZ AUTO M1
 task.spawn(function()
    while true do
       if standaloneAutoM1 and not isEscapeActive then
@@ -261,7 +267,7 @@ task.spawn(function()
    end
 end)
 
--- SÜREKLİ AKILLI KOMBO VE SALDIRI DÖNGÜSÜ
+-- SÜREKLİ TAM SAVAŞ DÖNGÜSÜ
 task.spawn(function()
    while true do
       if autoAttackLoop and not isEscapeActive then
@@ -302,7 +308,7 @@ task.spawn(function()
                task.wait(m1Delay)
             end
          else
-            task.wait(0.2)
+            task.wait(0.1)
          end
       end
       task.wait(0.02)
@@ -388,10 +394,7 @@ SafetyTab:CreateToggle({
       healthSafetyToggle = Value
       if not Value and isEscapeActive then
          isEscapeActive = false
-         local character = LocalPlayer.Character
-         if character and character:FindFirstChild("HumanoidRootPart") then
-            unfreezeInAir(character.HumanoidRootPart)
-         end
+         removeSpaceFreeze()
       end
    end,
 })
