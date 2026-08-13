@@ -1,10 +1,10 @@
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-   Name = "Jujutsu Shenanigans",
-   LoadingTitle = "Loading. . .",
-   LoadingSubtitle = "kainatbozan",
-   ConfigurationSaving = { Enabled = false }
+   Name = "Jujutsu Shenanigans",
+   LoadingTitle = "Loading. . .",
+   LoadingSubtitle = "kainatbozan",
+   ConfigurationSaving = { Enabled = false }
 })
 
 local MainTab = Window:CreateTab("Auto Combat", 4483362458)
