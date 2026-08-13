@@ -3,7 +3,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({
    Name = "Jujutsu Shenanigans",
    LoadingTitle = "Loading. . .",
-   LoadingSubtitle = "kainatbozanv2",
+   LoadingSubtitle = "kainatbozan",
    ConfigurationSaving = { Enabled = false }
 })
 
@@ -21,7 +21,8 @@ local Camera = Workspace.CurrentCamera
 -- Ayarlar
 local targetPlayerName = ""
 local useRandomTarget = true
-local behindDistance = 2.5
+local behindDistance = 3
+local chaseSpeed = 160 -- Yüksek Hareket Hızı (Fly/Dash Speed)
 local m1Count = 4
 local comboDelay = 0.20
 local m1Delay = 0.10
@@ -37,7 +38,7 @@ local aimbotToggle = false
 local isEscapeActive = false
 local currentTargetPlayer = nil
 
--- KESİN CANLILIK KONTROLÜ (Ragdoll ve Kırık Karakter Engelleme)
+-- CANLILIK KONTROLÜ
 local function isPlayerAlive(player)
    if not player or not player.Parent then return false end
    local char = player.Character
@@ -48,8 +49,7 @@ local function isPlayerAlive(player)
 
    if not hum or not root then return false end
    if hum.Health <= 0 then return false end
-   
-   -- JJK Özel Ragdoll / Knockout Kontrolü
+
    if char:FindFirstChild("Knocked") or char:FindFirstChild("Ragdoll") or char:FindFirstChild("Dead") then
       return false
    end
@@ -62,16 +62,14 @@ local function isPlayerAlive(player)
    return true
 end
 
--- RAKİP SIFIRLAMA VE YENİ HEDEF KİLİTLENME
+-- DİNAMİK HEDEF SEÇİCİ
 local function updateAndGetTarget()
    if isPlayerAlive(currentTargetPlayer) then
       return currentTargetPlayer
    end
 
-   -- Önceki hedef ölmüş veya geçersizleşmişse ANINDA SIFIRLA
    currentTargetPlayer = nil
 
-   -- 1. İsimle Arama
    if not useRandomTarget and targetPlayerName ~= "" then
       for _, player in ipairs(Players:GetPlayers()) do
          if player ~= LocalPlayer and isPlayerAlive(player) then
@@ -84,7 +82,6 @@ local function updateAndGetTarget()
       end
    end
 
-   -- 2. Rastgele / En Yakın Canlı Hedef
    local closestPlayer = nil
    local shortestDist = math.huge
    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -109,14 +106,6 @@ local function updateAndGetTarget()
    return currentTargetPlayer
 end
 
-local function getTargetTorso()
-   local target = updateAndGetTarget()
-   if target and isPlayerAlive(target) then
-      return target.Character:FindFirstChild("HumanoidRootPart")
-   end
-   return nil
-end
-
 local function isTargetBlocking()
    local target = updateAndGetTarget()
    if target and isPlayerAlive(target) then
@@ -137,23 +126,33 @@ local function isTargetBlocking()
    return false
 end
 
--- DİNAMİK TP (IŞINLANMA)
-local function tpBehindTarget()
-   if isEscapeActive then return false end
+-- IŞINLANMA YERİNE YÜKSEK HIZLA KOŞMA / SÜRÜKLENME (HIGH SPEED DASH)
+local function moveToTargetSmooth()
+   if isEscapeActive then return end
 
-   local targetTorso = getTargetTorso()
+   local target = updateAndGetTarget()
    local myChar = LocalPlayer.Character
    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
 
-   if targetTorso and myRoot then
-      local velocity = targetTorso.AssemblyLinearVelocity or Vector3.zero
-      local predictPos = targetTorso.Position + (velocity * 0.02)
-      local behindPosition = predictPos - (targetTorso.CFrame.LookVector * behindDistance)
+   if target and isPlayerAlive(target) and myRoot then
+      local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
+      if tRoot then
+         -- Hedefin arkasında kalınacak nokta
+         local targetPos = tRoot.Position - (tRoot.CFrame.LookVector * behindDistance)
+         local distance = (targetPos - myRoot.Position).Magnitude
 
-      myRoot.CFrame = CFrame.lookAt(behindPosition, targetTorso.Position)
-      return true
+         if distance > 1 then
+            -- Anlık TP yapmak yerine hedefe doğru yüksek hızda ivmelenir
+            local direction = (targetPos - myRoot.Position).Unit
+            myRoot.AssemblyLinearVelocity = direction * math.min(chaseSpeed, distance * 20)
+         else
+            myRoot.AssemblyLinearVelocity = Vector3.zero
+         end
+         
+         -- Yüzünü hedefe çevir
+         myRoot.CFrame = CFrame.lookAt(myRoot.Position, Vector3.new(tRoot.Position.X, myRoot.Position.Y, tRoot.Position.Z))
+      end
    end
-   return false
 end
 
 -- TUŞ GİRDİLERİ
@@ -175,9 +174,9 @@ local function clickM2()
    VirtualInputManager:SendMouseButtonEvent(0, 0, 1, false, game, 0)
 end
 
--- RENDERSTEPPED DÖNGÜSÜ: AIMBOT & TAKİP & CAN KONTROLÜ (HER KAREDE ÇALIŞIR)
+-- RENDERSTEPPED DÖNGÜSÜ (HAREKET & AIMBOT & KAÇIŞ)
 RunService.RenderStepped:Connect(function()
-   -- 1. CAN KORUMASI (%15)
+   -- 1. CAN KORUMASI (%15 YUKARI HIZLI UÇUŞ)
    if healthSafetyToggle then
       local myChar = LocalPlayer.Character
       local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
@@ -188,16 +187,20 @@ RunService.RenderStepped:Connect(function()
 
          if hpPercent <= 15 then
             isEscapeActive = true
-            -- Düşmeyi tamamen engellemek için doğrudan Y ekseninde hızı sıfırla ve CFrame ile yukarıda tut
-            myRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-            myRoot.CFrame = CFrame.new(myRoot.Position.X, 500, myRoot.Position.Z)
+            -- Işınlanmak yerine yüksek hızla dikine uçar
+            myRoot.AssemblyLinearVelocity = Vector3.new(0, 200, 0)
          elseif hpPercent >= 30 and isEscapeActive then
             isEscapeActive = false
          end
       end
    end
 
-   -- 2. AIMBOT (KAMERA KİLİTLENMESİ)
+   -- 2. HAREKET KONTROLÜ (YÜKSEK HIZLI TAKİP)
+   if (autoAttackLoop or autoBehindLock) and not isEscapeActive then
+      moveToTargetSmooth()
+   end
+
+   -- 3. AIMBOT
    if (aimbotToggle or autoAttackLoop) and not isEscapeActive then
       local target = updateAndGetTarget()
       if target and isPlayerAlive(target) then
@@ -207,14 +210,9 @@ RunService.RenderStepped:Connect(function()
          end
       end
    end
-
-   -- 3. LOCK BEHIND
-   if autoBehindLock and not isEscapeActive and not autoAttackLoop then
-      tpBehindTarget()
-   end
 end)
 
--- AUTO BLOCK DÖNGÜSÜ
+-- AUTO BLOCK
 task.spawn(function()
    while true do
       if autoBlockToggle and not isEscapeActive then
@@ -238,15 +236,13 @@ task.spawn(function()
    end
 end)
 
--- TAM SAVAŞ DÖNGÜSÜ
+-- AKILLI SALDIRI DÖNGÜSÜ
 task.spawn(function()
    while true do
       if autoAttackLoop and not isEscapeActive then
          local target = updateAndGetTarget()
 
          if target and isPlayerAlive(target) then
-            tpBehindTarget()
-
             if autoGuardBreakToggle and isTargetBlocking() then
                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
                clickM2()
@@ -256,7 +252,6 @@ task.spawn(function()
             local keys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
             for _, key in ipairs(keys) do
                if not autoAttackLoop or isEscapeActive or not isPlayerAlive(currentTargetPlayer) then break end
-               tpBehindTarget()
 
                if autoGuardBreakToggle and isTargetBlocking() then
                   clickM2()
@@ -269,7 +264,6 @@ task.spawn(function()
 
             for i = 1, m1Count do
                if not autoAttackLoop or isEscapeActive or not isPlayerAlive(currentTargetPlayer) then break end
-               tpBehindTarget()
 
                if autoGuardBreakToggle and isTargetBlocking() then
                   clickM2()
@@ -319,7 +313,7 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
-   Name = "Hedefin Sırtına Kilitlen (Auto Lock Behind)",
+   Name = "Hedefin Sırtına Hızlı Koş (Smooth Dash Lock)",
    CurrentValue = false,
    Flag = "AutoBehindLockFlag",
    Callback = function(Value)
@@ -352,7 +346,7 @@ SafetyTab:CreateToggle({
 })
 
 SafetyTab:CreateToggle({
-   Name = "Uzay Koruması (%15 Kaç / %30 Dön)",
+   Name = "Uzay Koruması (%15 Yukarı Uç / %30 Dön)",
    CurrentValue = false,
    Flag = "SpaceSafetyFlag",
    Callback = function(Value)
@@ -378,11 +372,23 @@ SafetyTab:CreateToggle({
 SafetyTab:CreateSection("Ayar & Gecikmeler")
 
 SafetyTab:CreateSlider({
+   Name = "Takip Hızı (Velocity Speed)",
+   Range = {50, 300},
+   Increment = 10,
+   Suffix = " Speed",
+   CurrentValue = 160,
+   Flag = "SpeedSlider",
+   Callback = function(Value)
+      chaseSpeed = Value
+   end,
+})
+
+SafetyTab:CreateSlider({
    Name = "Arka Mesafe (Studs)",
    Range = {1, 10},
    Increment = 0.5,
    Suffix = " Stud",
-   CurrentValue = 2.5,
+   CurrentValue = 3,
    Flag = "DistanceSlider",
    Callback = function(Value)
       behindDistance = Value
