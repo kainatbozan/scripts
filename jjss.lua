@@ -22,6 +22,7 @@ local Camera = Workspace.CurrentCamera
 local targetPlayerName = ""
 local useRandomTarget = true
 local behindDistance = 2.5
+local twinSpeedValue = 200 -- İstenen 200 Hızı
 local m1Count = 4
 local comboDelay = 0.20
 local m1Delay = 0.10
@@ -33,6 +34,7 @@ local autoBlockToggle = false
 local healthSafetyToggle = false
 local autoGuardBreakToggle = true
 local aimbotToggle = false
+local twinSpeedToggle = false
 
 local isEscapeActive = false
 local currentTargetPlayer = nil
@@ -56,7 +58,7 @@ local function isPlayerAlive(player)
    return true
 end
 
--- DİNAMİK HEDEF SEÇİCİ (MESAFE SINIRI OLSAMIZIN EN YAKIN / İSME GÖRE CANLI RAKİP)
+-- DİNAMİK HEDEF SEÇİCİ
 local function updateAndGetTarget()
    if isPlayerAlive(currentTargetPlayer) then
       return currentTargetPlayer
@@ -77,7 +79,7 @@ local function updateAndGetTarget()
       end
    end
 
-   -- 2. Herhangi Bir Canlı Oyuncu (Uzaktakiler Dahil)
+   -- 2. Herhangi Bir Canlı Oyuncu
    local closestPlayer = nil
    local shortestDist = math.huge
    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -122,7 +124,7 @@ local function isTargetBlocking()
    return false
 end
 
--- MESAFE FARK ETMEKSİZİN ANINDA ARKASINA IŞINLANMA (500+ STUD TP)
+-- SIRTA IŞINLANMA
 local function tpBehindTarget()
    if isEscapeActive then return end
 
@@ -133,9 +135,7 @@ local function tpBehindTarget()
    if target and isPlayerAlive(target) and myRoot then
       local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
       if tRoot then
-         -- Hedefin tam arkasındaki nokta
          local behindPosition = tRoot.Position - (tRoot.CFrame.LookVector * behindDistance)
-         -- Doğrudan CFrame ile hedefin arkasına ışınlan (Mesafe sınırı yok)
          myRoot.CFrame = CFrame.lookAt(behindPosition, tRoot.Position)
       end
    end
@@ -160,13 +160,18 @@ local function clickM2()
    VirtualInputManager:SendMouseButtonEvent(0, 0, 1, false, game, 0)
 end
 
--- RENDERSTEPPED (HER KAREDE IŞINLANMA & AIMBOT & CAN KORUMASI)
+-- RENDERSTEPPED (HER KAREDE HIZ, IŞINLANMA, AIMBOT, CAN KORUMASI)
 RunService.RenderStepped:Connect(function()
    local myChar = LocalPlayer.Character
    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
    local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
 
-   -- 1. %15 CAN KORUMASI (%15 Altında Göğe Işınlanır)
+   -- 1. TWIN SPEED (200 HIZ MOTORU)
+   if twinSpeedToggle and hum and hum.Health > 0 then
+      hum.WalkSpeed = twinSpeedValue
+   end
+
+   -- 2. %15 CAN KORUMASI
    if healthSafetyToggle and hum and myRoot and hum.Health > 0 then
       local hpPercent = (hum.Health / hum.MaxHealth) * 100
 
@@ -178,12 +183,12 @@ RunService.RenderStepped:Connect(function()
       end
    end
 
-   -- 2. SIRTA SÜREKLİ IŞINLANMA (LOCK BEHIND)
+   -- 3. LOCK BEHIND
    if autoBehindLock and not isEscapeActive and not autoAttackLoop then
       tpBehindTarget()
    end
 
-   -- 3. AIMBOT
+   -- 4. AIMBOT
    if (aimbotToggle or autoAttackLoop) and not isEscapeActive then
       local target = updateAndGetTarget()
       if target and isPlayerAlive(target) then
@@ -219,14 +224,13 @@ task.spawn(function()
    end
 end)
 
--- AKILLI KOMBO VE OTOMATİK SALDIRI DÖNGÜSÜ
+-- AKILLI SALDIRI DÖNGÜSÜ
 task.spawn(function()
    while true do
       if autoAttackLoop and not isEscapeActive then
          local target = updateAndGetTarget()
 
          if target and isPlayerAlive(target) then
-            -- Saldırmadan önce her adımda arkasına TP at
             tpBehindTarget()
 
             if autoGuardBreakToggle and isTargetBlocking() then
@@ -279,6 +283,19 @@ MainTab:CreateInput({
       targetPlayerName = Text
       currentTargetPlayer = nil
       useRandomTarget = (Text == "")
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "Twin Speed (200 Yüksek Hız)",
+   CurrentValue = false,
+   Flag = "TwinSpeedToggleFlag",
+   Callback = function(Value)
+      twinSpeedToggle = Value
+      if not Value then
+         local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+         if hum then hum.WalkSpeed = 16 end -- Varsayılan hıza dön
+      end
    end,
 })
 
@@ -358,6 +375,18 @@ SafetyTab:CreateToggle({
 })
 
 SafetyTab:CreateSection("Ayar & Gecikmeler")
+
+SafetyTab:CreateSlider({
+   Name = "Twin Speed Hız Değeri",
+   Range = {16, 500},
+   Increment = 10,
+   Suffix = " Speed",
+   CurrentValue = 200,
+   Flag = "TwinSpeedSlider",
+   Callback = function(Value)
+      twinSpeedValue = Value
+   end,
+})
 
 SafetyTab:CreateSlider({
    Name = "Arka Mesafe (Studs)",
