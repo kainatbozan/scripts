@@ -1,10 +1,10 @@
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-   Name = "Jujutsu Shenanigans - Auto Target Engine",
-   LoadingTitle = "JJK Smart Script",
-   LoadingSubtitle = "Random Target & Auto Switch System",
-   ConfigurationSaving = { Enabled = false }
+   Name = "Jujutsu Shenanigans",
+   LoadingTitle = "Loading. . .",
+   LoadingSubtitle = "kainatbozan",
+   ConfigurationSaving = { Enabled = false }
 })
 
 local MainTab = Window:CreateTab("Auto Combat", 4483362458)
@@ -16,13 +16,15 @@ local LocalPlayer = Players.LocalPlayer
 
 -- Ayarlar
 local targetPlayerName = ""
-local useRandomTarget = true -- Varsayılan Rastgele Hedef
+local useRandomTarget = true
 local behindDistance = 2.5
 local m1Count = 4
 local comboDelay = 0.25
 local m1Delay = 0.12
 
 local autoAttackLoop = false
+local standaloneAutoM1 = false -- Bağımsız Auto M1 Toggle'ı
+local autoBehindLock = false  -- Sadece arkada kalma kilit toggle'ı
 local autoBlockToggle = false
 local healthSafetyToggle = false
 local autoGuardBreakToggle = true
@@ -30,7 +32,7 @@ local autoGuardBreakToggle = true
 local isEscapeActive = false
 local currentTargetPlayer = nil
 
--- CANLI VE GEÇERLİ OYUN CU KONTROLÜ
+-- CANLI OYUN CU KONTROLÜ
 local function isPlayerAlive(player)
    if player and player.Parent and player.Character then
       local hum = player.Character:FindFirstChildOfClass("Humanoid")
@@ -42,16 +44,14 @@ local function isPlayerAlive(player)
    return false
 end
 
--- DİNAMİK HEDEF SEÇİCİ (İSİM VEYA RASTGELE)
+-- DİNAMİK HEDEF SEÇİCİ
 local function updateAndGetTarget()
-   -- Eğer mevcut hedef hala canlıysa ve oyundaysa onu koru
    if isPlayerAlive(currentTargetPlayer) then
       return currentTargetPlayer
    end
 
    currentTargetPlayer = nil
 
-   -- 1. Özel İsim Yazıldıysa Ona Bak
    if not useRandomTarget and targetPlayerName ~= "" then
       for _, player in ipairs(Players:GetPlayers()) do
          if player ~= LocalPlayer and isPlayerAlive(player) then
@@ -64,7 +64,6 @@ local function updateAndGetTarget()
       end
    end
 
-   -- 2. Rastgele veya İsim Bulunamadıysa En Yakındaki Canlı Oyuncuyu Seç
    local closestPlayer = nil
    local shortestDistance = math.huge
    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -91,7 +90,6 @@ local function updateAndGetTarget()
    return currentTargetPlayer
 end
 
--- Target Torso Bulma
 local function getTargetTorso()
    local target = updateAndGetTarget()
    if target and target.Character then
@@ -100,7 +98,6 @@ local function getTargetTorso()
    return nil
 end
 
--- Rakip Blok Yapıyor mu Kontrolü
 local function isTargetBlocking()
    local target = updateAndGetTarget()
    if target and target.Character then
@@ -121,7 +118,6 @@ local function isTargetBlocking()
    return false
 end
 
--- Havada Sabitleme
 local function freezeInAir(root)
    if not root then return end
    local bv = root:FindFirstChild("JJKSpaceBV")
@@ -141,7 +137,6 @@ local function unfreezeInAir(root)
    end
 end
 
--- DİNAMİK ARKA İŞINLANMA (VELOCITY PREDICTION)
 local function tpBehindTarget()
    if isEscapeActive then return false end
    
@@ -159,7 +154,6 @@ local function tpBehindTarget()
    return false
 end
 
--- Tuş Girdileri
 local function pressKey(keyCode, holdTime)
    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
    task.wait(holdTime or 0.05)
@@ -217,7 +211,31 @@ task.spawn(function()
    end
 end)
 
--- OTOMATİK SÜREKLİ OTOMATİK SALDIRI DÖNGÜSÜ (ÖLENE / ÇIKANA KADAR YAPITAŞI)
+-- SADECE ARKADA KALMA DÖNGÜSÜ
+task.spawn(function()
+   while true do
+      if autoBehindLock and not isEscapeActive and not autoAttackLoop then
+         tpBehindTarget()
+      end
+      task.wait(0.01)
+   end
+end)
+
+-- BAĞIMSIZ SÜREKLİ AUTO M1 DÖNGÜSÜ
+task.spawn(function()
+   while true do
+      if standaloneAutoM1 and not isEscapeActive then
+         if autoGuardBreakToggle and isTargetBlocking() then
+            clickM2()
+         else
+            clickM1()
+         end
+      end
+      task.wait(m1Delay)
+   end
+end)
+
+-- AKILLI TAM SAVAŞ DÖNGÜSÜ (1-2-3-4 + M1)
 task.spawn(function()
    while true do
       if autoAttackLoop and not isEscapeActive then
@@ -226,14 +244,12 @@ task.spawn(function()
          if targetTorso then
             tpBehindTarget()
 
-            -- 1. Blok Kontrolü ve Guard Break
             if autoGuardBreakToggle and isTargetBlocking() then
                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
                clickM2()
                task.wait(0.1)
             end
 
-            -- 2. Yetenek Sırası (1-2-3-4)
             local keys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
             for _, key in ipairs(keys) do
                if not autoAttackLoop or isEscapeActive or not isPlayerAlive(currentTargetPlayer) then break end
@@ -248,7 +264,6 @@ task.spawn(function()
                task.wait(comboDelay)
             end
 
-            -- 3. M1 Vuruş Serisi
             for i = 1, m1Count do
                if not autoAttackLoop or isEscapeActive or not isPlayerAlive(currentTargetPlayer) then break end
                tpBehindTarget()
@@ -261,7 +276,7 @@ task.spawn(function()
                task.wait(m1Delay)
             end
          else
-            task.wait(0.5) -- Canlı oyuncu yoksa bekle
+            task.wait(0.5)
          end
       end
       task.wait(0.02)
@@ -289,7 +304,25 @@ MainTab:CreateInput({
 })
 
 MainTab:CreateToggle({
-   Name = "Sürekli Otomatik Saldır (Ölene/Çıkana Kadar)",
+   Name = "Sürekli Auto M1 (Aralıksız Tıkla)",
+   CurrentValue = false,
+   Flag = "StandaloneM1Flag",
+   Callback = function(Value)
+      standaloneAutoM1 = Value
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "Hedefin Sırtına Kilitlen (Auto Lock Behind)",
+   CurrentValue = false,
+   Flag = "AutoBehindLockFlag",
+   Callback = function(Value)
+      autoBehindLock = Value
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "Tam Otomatik Savaş (Kombo + M1 + Otomatik Yeni Hedef)",
    CurrentValue = false,
    Flag = "AutoAttackLoopFlag",
    Callback = function(Value)
