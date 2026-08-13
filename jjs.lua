@@ -3,7 +3,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({
    Name = "Jujutsu Shenanigans",
    LoadingTitle = "Loading. . .",
-   LoadingSubtitle = "kainatbozanv2",
+   LoadingSubtitle = "kainatbozan",
    ConfigurationSaving = { Enabled = false }
 })
 
@@ -24,6 +24,7 @@ task.spawn(function()
 end)
 
 local MainTab = Window:CreateTab("Auto Combat", 4483362458)
+local AdvancedTab = Window:CreateTab("Gelişmiş Özellikler", 4483362458)
 local SafetyTab = Window:CreateTab("Güvenlik & Blok", 4483362458)
 
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -34,7 +35,7 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
--- Ayarlar
+-- Temel Ayarlar
 local targetPlayerName = ""
 local useRandomTarget = true
 local behindDistance = 2.5
@@ -42,8 +43,11 @@ local twinSpeedValue = 200
 local m1Count = 4
 local comboDelay = 0.20
 local m1Delay = 0.10
-local gDelay = 2.0 -- Auto G basma aralığı (Saniye)
+local gDelay = 2.0
 
+-- Yeni Ayarlar
+local selectedCharacterPreset = "Standard" -- Standard, Gojo, Yuji, Mahoraga
+local autoGToggle = false
 local autoAttackLoop = false
 local standaloneAutoM1 = false
 local autoBehindLock = false
@@ -52,7 +56,13 @@ local healthSafetyToggle = false
 local autoGuardBreakToggle = true
 local aimbotToggle = false
 local twinSpeedToggle = false
-local autoGToggle = false -- Auto G Aç/Kapat
+
+-- Gelişmiş Özellik Toggle'ları
+local hitboxExtenderToggle = false
+local hitboxSize = 10
+local antiGrabToggle = false
+local autoDodgeToggle = false
+local mahoragaAdaptToggle = false
 
 local isEscapeActive = false
 local currentTargetPlayer = nil
@@ -124,7 +134,6 @@ local function updateAndGetTarget()
 
    currentTargetPlayer = nil
 
-   -- 1. Özel İsim Arama
    if not useRandomTarget and targetPlayerName ~= "" then
       for _, player in ipairs(Players:GetPlayers()) do
          if player ~= LocalPlayer and isPlayerAlive(player) then
@@ -137,7 +146,6 @@ local function updateAndGetTarget()
       end
    end
 
-   -- 2. Herhangi Bir Canlı Oyuncu
    local closestPlayer = nil
    local shortestDist = math.huge
    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -199,7 +207,7 @@ local function tpBehindTarget()
    end
 end
 
--- TUŞ GİRDİLERİ
+-- TUŞ VE FARE GİRDİLERİ
 local function pressKey(keyCode, holdTime)
    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
    task.wait(holdTime or 0.04)
@@ -220,7 +228,20 @@ local function clickM2()
    VirtualInputManager:SendMouseButtonEvent(vp.X / 2, vp.Y / 2, 1, false, game, 0)
 end
 
--- RENDERSTEPPED DÖNGÜSÜ
+-- SMART SKILL PRIORITY (AKILLI KOMBO SIRALAMASI)
+local function getSmartSkillSequence()
+   if selectedCharacterPreset == "Gojo" then
+      return {Enum.KeyCode.Two, Enum.KeyCode.One, Enum.KeyCode.Three, Enum.KeyCode.Four}
+   elseif selectedCharacterPreset == "Yuji" then
+      return {Enum.KeyCode.Three, Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Four}
+   elseif selectedCharacterPreset == "Mahoraga" then
+      return {Enum.KeyCode.One, Enum.KeyCode.Three, Enum.KeyCode.Two, Enum.KeyCode.Four}
+   else
+      return {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
+   end
+end
+
+-- RENDERSTEPPED DÖNGÜSÜ & MİKRO MEKANİKLER
 RunService.RenderStepped:Connect(function()
    if not isLocalPlayerAlive() then return end
 
@@ -228,12 +249,53 @@ RunService.RenderStepped:Connect(function()
    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
    local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
 
-   -- 1. TWIN SPEED
+   -- 1. HITBOX EXTENDER (IŞINLANMADAN VURMA)
+   if hitboxExtenderToggle then
+      local target = updateAndGetTarget()
+      if target and isPlayerAlive(target) then
+         local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
+         if tRoot then
+            tRoot.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+            tRoot.Transparency = 0.7
+            tRoot.BrickColor = BrickColor.new("Really red")
+            tRoot.CanCollide = false
+         end
+      end
+   end
+
+   -- 2. ANTI-GRAB / ANTI-COMBO (KOMBODAN KAÇIŞ)
+   if antiGrabToggle and myChar then
+      if myChar:FindFirstChild("Grabbed") or myChar:FindFirstChild("Stun") or myChar:FindFirstChild("Combo") then
+         if myRoot then
+            myRoot.CFrame = myRoot.CFrame + Vector3.new(0, 3, 0)
+         end
+      end
+   end
+
+   -- 3. AUTO DODGE / SIDE-DASH PREDICTOR
+   if autoDodgeToggle then
+      local target = updateAndGetTarget()
+      if target and isPlayerAlive(target) then
+         local tChar = target.Character
+         local tHum = tChar and tChar:FindFirstChildOfClass("Humanoid")
+         if tHum then
+            for _, track in ipairs(tHum:GetPlayingAnimationTracks()) do
+               local animName = string.lower(track.Name)
+               if string.find(animName, "attack") or string.find(animName, "skill") or string.find(animName, "dash") then
+                  pressKey(Enum.KeyCode.Q, 0.05)
+                  break
+               end
+            end
+         end
+      end
+   end
+
+   -- 4. TWIN SPEED
    if twinSpeedToggle and hum then
       hum.WalkSpeed = twinSpeedValue
    end
 
-   -- 2. %15 CAN KORUMASI
+   -- 5. %15 CAN KORUMASI
    if healthSafetyToggle and hum and myRoot then
       local hpPercent = (hum.Health / hum.MaxHealth) * 100
 
@@ -245,12 +307,12 @@ RunService.RenderStepped:Connect(function()
       end
    end
 
-   -- 3. LOCK BEHIND
+   -- 6. LOCK BEHIND
    if autoBehindLock and not isEscapeActive and not autoAttackLoop then
       tpBehindTarget()
    end
 
-   -- 4. AIMBOT
+   -- 7. AIMBOT
    if (aimbotToggle or autoAttackLoop) and not isEscapeActive then
       local target = updateAndGetTarget()
       if target and isPlayerAlive(target) then
@@ -262,7 +324,21 @@ RunService.RenderStepped:Connect(function()
    end
 end)
 
--- AUTO G (AWAKENING / ULTIMATE DÖNGÜSÜ)
+-- MAHORAGA AUTO ADAPTATION
+task.spawn(function()
+   while true do
+      if mahoragaAdaptToggle and isLocalPlayerAlive() then
+         local myChar = LocalPlayer.Character
+         local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+         if hum and hum.Health < hum.MaxHealth then
+            pressKey(Enum.KeyCode.G, 0.1)
+         end
+      end
+      task.wait(1)
+   end
+end)
+
+-- AUTO G DÖNGÜSÜ
 task.spawn(function()
    while true do
       if autoGToggle and not isEscapeActive and isLocalPlayerAlive() then
@@ -296,14 +372,16 @@ task.spawn(function()
    end
 end)
 
--- AKILLI SALDIRI DÖNGÜSÜ
+-- AKILLI SALDIRI DÖNGÜSÜ (SMART PRIORITY INTEGRATED)
 task.spawn(function()
    while true do
       if autoAttackLoop and not isEscapeActive and isLocalPlayerAlive() then
          local target = updateAndGetTarget()
 
          if target and isPlayerAlive(target) then
-            tpBehindTarget()
+            if not hitboxExtenderToggle then
+               tpBehindTarget()
+            end
 
             if autoGuardBreakToggle and isTargetBlocking() then
                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
@@ -311,10 +389,11 @@ task.spawn(function()
                task.wait(0.08)
             end
 
-            local keys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
+            -- Smart Skill Priority tuş sırası alınıyor
+            local keys = getSmartSkillSequence()
             for _, key in ipairs(keys) do
                if not autoAttackLoop or isEscapeActive or not isLocalPlayerAlive() or not isPlayerAlive(currentTargetPlayer) then break end
-               tpBehindTarget()
+               if not hitboxExtenderToggle then tpBehindTarget() end
 
                if autoGuardBreakToggle and isTargetBlocking() then
                   clickM2()
@@ -327,7 +406,7 @@ task.spawn(function()
 
             for i = 1, m1Count do
                if not autoAttackLoop or isEscapeActive or not isLocalPlayerAlive() or not isPlayerAlive(currentTargetPlayer) then break end
-               tpBehindTarget()
+               if not hitboxExtenderToggle then tpBehindTarget() end
 
                if autoGuardBreakToggle and isTargetBlocking() then
                   clickM2()
@@ -345,8 +424,9 @@ task.spawn(function()
    end
 end)
 
--- UI ELEMANLARI (TAB 1)
+-- ================= Uİ ELEMANLARI =================
 
+-- TAB 1: AUTO COMBAT
 MainTab:CreateInput({
    Name = "Hedef Oyuncu Adı (Boşsa Rastgele)",
    PlaceholderText = "İsim yaz veya boş bırak...",
@@ -358,34 +438,34 @@ MainTab:CreateInput({
    end,
 })
 
-MainTab:CreateToggle({
-   Name = "Otomatik G Bas (Auto Awakening/Ultimate)",
-   CurrentValue = false,
-   Flag = "AutoGToggleFlag",
-   Callback = function(Value)
-      autoGToggle = Value
-   end,
-})
-
-MainTab:CreateToggle({
-   Name = "Twin Speed (200 Yüksek Hız)",
-   CurrentValue = false,
-   Flag = "TwinSpeedToggleFlag",
-   Callback = function(Value)
-      twinSpeedToggle = Value
-      if not Value then
-         local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-         if hum then hum.WalkSpeed = 16 end
+MainTab:CreateDropdown({
+   Name = "Smart Skill Priority (Karakter Preset)",
+   Options = {"Standard (1-2-3-4)", "Gojo (2-1-3-4)", "Yuji (3-1-2-4)", "Mahoraga (1-3-2-4)"},
+   CurrentOption = "Standard (1-2-3-4)",
+   Flag = "SkillPriorityDropdown",
+   Callback = function(Option)
+      if string.find(Option, "Gojo") then
+         selectedCharacterPreset = "Gojo"
+      elseif string.find(Option, "Yuji") then
+         selectedCharacterPreset = "Yuji"
+      elseif string.find(Option, "Mahoraga") then
+         selectedCharacterPreset = "Mahoraga"
+      else
+         selectedCharacterPreset = "Standard"
       end
    end,
 })
 
 MainTab:CreateToggle({
-   Name = "Kamera Aimbot (Hedefe Kilitlen)",
+   Name = "Tam Otomatik Savaş (Akıllı Kombo + Target Lock)",
    CurrentValue = false,
-   Flag = "AimbotToggleFlag",
+   Flag = "AutoAttackLoopFlag",
    Callback = function(Value)
-      aimbotToggle = Value
+      autoAttackLoop = Value
+      if Value then
+         currentTargetPlayer = nil
+         updateAndGetTarget()
+      end
    end,
 })
 
@@ -399,28 +479,85 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
-   Name = "Hedefin Sırtına Anında Işınlan (Instant TP Lock)",
+   Name = "Otomatik G Bas (Auto Awakening)",
    CurrentValue = false,
-   Flag = "AutoBehindLockFlag",
+   Flag = "AutoGToggleFlag",
    Callback = function(Value)
-      autoBehindLock = Value
+      autoGToggle = Value
    end,
 })
 
-MainTab:CreateToggle({
-   Name = "Tam Otomatik Savaş (Kombo + M1 + Otomatik Yeni Hedef)",
+-- TAB 2: GELİŞMİŞ ÖZELLİKLER
+AdvancedTab:CreateToggle({
+   Name = "Hitbox Extender (Işınlanmadan Uzaktan Vurma)",
    CurrentValue = false,
-   Flag = "AutoAttackLoopFlag",
+   Flag = "HitboxExtenderFlag",
    Callback = function(Value)
-      autoAttackLoop = Value
-      if Value then
-         currentTargetPlayer = nil
-         updateAndGetTarget()
+      hitboxExtenderToggle = Value
+   end,
+})
+
+AdvancedTab:CreateSlider({
+   Name = "Hitbox Boyutu",
+   Range = {2, 30},
+   Increment = 1,
+   Suffix = " Stud",
+   CurrentValue = 10,
+   Flag = "HitboxSizeSlider",
+   Callback = function(Value)
+      hitboxSize = Value
+   end,
+})
+
+AdvancedTab:CreateToggle({
+   Name = "Anti-Grab / Anti-Combo (Kombodan Kaçış)",
+   CurrentValue = false,
+   Flag = "AntiGrabFlag",
+   Callback = function(Value)
+      antiGrabToggle = Value
+   end,
+})
+
+AdvancedTab:CreateToggle({
+   Name = "Auto Dodge / Side-Dash Predictor (Saldırıdan Kaç)",
+   CurrentValue = false,
+   Flag = "AutoDodgeFlag",
+   Callback = function(Value)
+      autoDodgeToggle = Value
+   end,
+})
+
+AdvancedTab:CreateToggle({
+   Name = "Mahoraga Auto Adaptation (Otomatik Uyum)",
+   CurrentValue = false,
+   Flag = "MahoragaAdaptFlag",
+   Callback = function(Value)
+      mahoragaAdaptToggle = Value
+   end,
+})
+
+-- TAB 3: GÜVENLİK & AYARLAR
+SafetyTab:CreateToggle({
+   Name = "Twin Speed (200 Yüksek Hız)",
+   CurrentValue = false,
+   Flag = "TwinSpeedToggleFlag",
+   Callback = function(Value)
+      twinSpeedToggle = Value
+      if not Value then
+         local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+         if hum then hum.WalkSpeed = 16 end
       end
    end,
 })
 
--- UI ELEMANLARI (TAB 2)
+SafetyTab:CreateToggle({
+   Name = "Kamera Aimbot (Hedefe Kilitlen)",
+   CurrentValue = false,
+   Flag = "AimbotToggleFlag",
+   Callback = function(Value)
+      aimbotToggle = Value
+   end,
+})
 
 SafetyTab:CreateToggle({
    Name = "Otomatik Blok Kırma (Auto Guard Break - M2)",
