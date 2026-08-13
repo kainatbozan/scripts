@@ -3,7 +3,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({
    Name = "Jujutsu Shenanigans",
    LoadingTitle = "Loading. . .",
-   LoadingSubtitle = "kainatbozan",
+   LoadingSubtitle = "kainatbozanv22",
    ConfigurationSaving = { Enabled = false }
 })
 
