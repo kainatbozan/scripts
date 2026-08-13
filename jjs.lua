@@ -2,7 +2,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
    Name = "Jujutsu Shenanigans",
-   LoadingTitle = "Loading. . .",
+   LoadingTitle = "Yükleniyor...",
    LoadingSubtitle = "kainatbozan",
    ConfigurationSaving = { Enabled = false }
 })
@@ -25,6 +25,7 @@ end)
 
 local MainTab = Window:CreateTab("Auto Combat", 4483362458)
 local SafetyTab = Window:CreateTab("Güvenlik & Blok", 4483362458)
+local WhitelistTab = Window:CreateTab("Whitelist", 4483362458)
 
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local Players = game:GetService("Players")
@@ -34,7 +35,7 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
--- General Settings
+-- Genel Ayarlar
 local targetPlayerName = ""
 local useRandomTarget = true
 local behindDistance = 2.5
@@ -54,18 +55,33 @@ local aimbotToggle = false
 local twinSpeedToggle = false
 local autoGToggle = false
 
--- Yuji Auto Combo Settings
+-- Yuji Auto Combo Ayarları
 local yujiComboToggle = false
 local yujiSkillDelay = 0.35
 
--- Hitbox Settings
+-- Hitbox Ayarları
 local hitboxToggle = false
 local hitboxSize = 15
 local hitboxTransparency = 0.7
 
+-- Whitelist Tablosu
+local whitelist = {}
+local whitelistInputName = ""
+
 local isEscapeActive = false
 local currentTargetPlayer = nil
 local isRespawning = false
+
+-- WHITELIST KONTROLÜ
+local function isWhitelisted(player)
+   if not player then return false end
+   for _, name in ipairs(whitelist) do
+      if string.lower(player.Name) == string.lower(name) or string.lower(player.DisplayName) == string.lower(name) then
+         return true
+      end
+   end
+   return false
+end
 
 -- KENDİ KARAKTERİNİN CANLI OLUP OLMADIĞINI BİLDİREN KONTROL
 local function isLocalPlayerAlive()
@@ -91,9 +107,11 @@ local function isLocalPlayerAlive()
    return true
 end
 
--- RAKİP CANLILIK KONTROLÜ
+-- RAKİP CANLILIK VE WHITELIST KONTROLÜ
 local function isPlayerAlive(player)
    if not player or not player.Parent then return false end
+   if isWhitelisted(player) then return false end -- Whitelist'tekileri hedef alma/canlı sayma
+
    local char = player.Character
    if not char or not char:IsDescendantOf(Workspace) then return false end
 
@@ -136,7 +154,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
    isRespawning = false
 end)
 
--- DİNAMİK HEDEF SEÇİCİ
+-- DİNAMİK HEDEF SEÇİCİ (EN YAKIN HEDEFİ OTOMATİK SEÇER)
 local function updateAndGetTarget()
    if not isLocalPlayerAlive() then return nil end
 
@@ -146,6 +164,7 @@ local function updateAndGetTarget()
 
    currentTargetPlayer = nil
 
+   -- 1. Özel İsim Arama
    if not useRandomTarget and targetPlayerName ~= "" then
       for _, player in ipairs(Players:GetPlayers()) do
          if player ~= LocalPlayer and isPlayerAlive(player) then
@@ -158,6 +177,7 @@ local function updateAndGetTarget()
       end
    end
 
+   -- 2. En Yakındaki Canlı Oyuncuyu Seç
    local closestPlayer = nil
    local shortestDist = math.huge
    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -182,6 +202,12 @@ local function updateAndGetTarget()
    return currentTargetPlayer
 end
 
+-- İLK GİRİŞTE OTOMATİK EN YAKIN RAKİBE KİLİTLEN
+task.spawn(function()
+   task.wait(1.5)
+   updateAndGetTarget()
+end)
+
 local function isTargetBlocking()
    local target = updateAndGetTarget()
    if target and isPlayerAlive(target) then
@@ -199,7 +225,7 @@ local function isTargetBlocking()
          end
       end
    end
-      return false
+   return false
 end
 
 -- SIRTA IŞINLANMA
@@ -242,9 +268,10 @@ end
 
 -- RENDERSTEPPED DÖNGÜSÜ
 RunService.RenderStepped:Connect(function()
+   -- Hitbox Büyütme (Whitelisttekilere uygulanmaz)
    if hitboxToggle then
       for _, player in ipairs(Players:GetPlayers()) do
-         if player ~= LocalPlayer and player.Character then
+         if player ~= LocalPlayer and player.Character and not isWhitelisted(player) then
             local root = player.Character:FindFirstChild("HumanoidRootPart")
             local hum = player.Character:FindFirstChildOfClass("Humanoid")
             if root and hum and hum.Health > 0 then
@@ -253,6 +280,13 @@ RunService.RenderStepped:Connect(function()
                root.BrickColor = BrickColor.new("Really red")
                root.Material = Enum.Material.ForceField
                root.CanCollide = false
+            end
+         elseif isWhitelisted(player) and player.Character then
+            -- Whitelistteki oyuncunun hitbox'ını orijinal haline getir
+            local root = player.Character:FindFirstChild("HumanoidRootPart")
+            if root and root.Size.X ~= 2 then
+               root.Size = Vector3.new(2, 2, 1)
+               root.Transparency = 1
             end
          end
       end
@@ -303,13 +337,11 @@ task.spawn(function()
          if target and isPlayerAlive(target) then
             tpBehindTarget()
 
-            -- 1. Blok Kontrolü
             if autoGuardBreakToggle and isTargetBlocking() then
                clickM2()
                task.wait(0.1)
             end
 
-            -- 2. 3x M1 Vuruşu
             for i = 1, 3 do
                if not yujiComboToggle or not isLocalPlayerAlive() or not isPlayerAlive(target) then break end
                tpBehindTarget()
@@ -317,34 +349,29 @@ task.spawn(function()
                task.wait(m1Delay)
             end
 
-            -- 3. Cursed Strikes (1)
             if yujiComboToggle and isLocalPlayerAlive() and isPlayerAlive(target) then
                tpBehindTarget()
                pressKey(Enum.KeyCode.One, 0.05)
                task.wait(yujiSkillDelay)
             end
 
-            -- 4. Divergent Fist (2)
             if yujiComboToggle and isLocalPlayerAlive() and isPlayerAlive(target) then
                tpBehindTarget()
                pressKey(Enum.KeyCode.Two, 0.05)
                task.wait(yujiSkillDelay)
             end
 
-            -- 5. Crushing Blow (3)
             if yujiComboToggle and isLocalPlayerAlive() and isPlayerAlive(target) then
                tpBehindTarget()
                pressKey(Enum.KeyCode.Three, 0.05)
                task.wait(yujiSkillDelay)
             end
 
-            -- 6. Black Flash / Final Hit (4)
             if yujiComboToggle and isLocalPlayerAlive() and isPlayerAlive(target) then
                tpBehindTarget()
                pressKey(Enum.KeyCode.Four, 0.05)
                task.wait(yujiSkillDelay)
             end
-
          else
             task.wait(0.1)
          end
@@ -448,7 +475,7 @@ MainTab:CreateToggle({
    Callback = function(Value)
       yujiComboToggle = Value
       if Value then
-         autoAttackLoop = false -- Genel oto saldırıyı çakışmaması için kapatır
+         autoAttackLoop = false
       end
    end,
 })
@@ -506,13 +533,14 @@ MainTab:CreateSlider({
 MainTab:CreateSection("Savaş & Hedefleme")
 
 MainTab:CreateInput({
-   Name = "Hedef Oyuncu Adı (Boşsa Rastgele)",
+   Name = "Hedef Oyuncu Adı (Boşsa En Yakın)",
    PlaceholderText = "İsim yaz veya boş bırak...",
    RemoveTextAfterFocusLost = false,
    Callback = function(Text)
       targetPlayerName = Text
       currentTargetPlayer = nil
       useRandomTarget = (Text == "")
+      updateAndGetTarget()
    end,
 })
 
@@ -673,5 +701,66 @@ SafetyTab:CreateSlider({
    Flag = "DelaySlider",
    Callback = function(Value)
       comboDelay = Value
+   end,
+})
+
+-- UI ELEMANLARI (TAB 3: Whitelist)
+
+WhitelistTab:CreateInput({
+   Name = "Oyuncu Adı (Username / DisplayName)",
+   PlaceholderText = "Eklenecek adı yazın...",
+   RemoveTextAfterFocusLost = false,
+   Callback = function(Text)
+      whitelistInputName = Text
+   end,
+})
+
+WhitelistTab:CreateButton({
+   Name = "Whitelist'e Ekle (Dost Ekle)",
+   Callback = function()
+      if whitelistInputName ~= "" then
+         table.insert(whitelist, whitelistInputName)
+         Rayfield:Notify({
+            Title = "Whitelist",
+            Content = whitelistInputName .. " whitelist listesine eklendi!",
+            Duration = 3,
+            Image = 4483362458,
+         })
+         currentTargetPlayer = nil
+         updateAndGetTarget()
+      end
+   end,
+})
+
+WhitelistTab:CreateButton({
+   Name = "Whitelist'ten Çıkar",
+   Callback = function()
+      if whitelistInputName ~= "" then
+         for i, name in ipairs(whitelist) do
+            if string.lower(name) == string.lower(whitelistInputName) then
+               table.remove(whitelist, i)
+               Rayfield:Notify({
+                  Title = "Whitelist",
+                  Content = whitelistInputName .. " listeden çıkarıldı!",
+                  Duration = 3,
+                  Image = 4483362458,
+               })
+               break
+            end
+         end
+      end
+   end,
+})
+
+WhitelistTab:CreateButton({
+   Name = "Tüm Whitelist'i Temizle",
+   Callback = function()
+      whitelist = {}
+      Rayfield:Notify({
+         Title = "Whitelist",
+         Content = "Tüm dost listesi temizlendi!",
+         Duration = 3,
+         Image = 4483362458,
+      })
    end,
 })
