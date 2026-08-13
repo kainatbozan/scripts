@@ -34,7 +34,7 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
--- Ayarlar
+-- General Settings
 local targetPlayerName = ""
 local useRandomTarget = true
 local behindDistance = 2.5
@@ -42,7 +42,7 @@ local twinSpeedValue = 200
 local m1Count = 4
 local comboDelay = 0.20
 local m1Delay = 0.10
-local gDelay = 2.0 -- Auto G basma aralığı (Saniye)
+local gDelay = 2.0
 
 local autoAttackLoop = false
 local standaloneAutoM1 = false
@@ -52,9 +52,13 @@ local healthSafetyToggle = false
 local autoGuardBreakToggle = true
 local aimbotToggle = false
 local twinSpeedToggle = false
-local autoGToggle = false -- Auto G Aç/Kapat
+local autoGToggle = false
 
--- Hitbox Ayarları
+-- Yuji Auto Combo Settings
+local yujiComboToggle = false
+local yujiSkillDelay = 0.35
+
+-- Hitbox Settings
 local hitboxToggle = false
 local hitboxSize = 15
 local hitboxTransparency = 0.7
@@ -142,7 +146,6 @@ local function updateAndGetTarget()
 
    currentTargetPlayer = nil
 
-   -- 1. Özel İsim Arama
    if not useRandomTarget and targetPlayerName ~= "" then
       for _, player in ipairs(Players:GetPlayers()) do
          if player ~= LocalPlayer and isPlayerAlive(player) then
@@ -155,7 +158,6 @@ local function updateAndGetTarget()
       end
    end
 
-   -- 2. Herhangi Bir Canlı Oyuncu
    local closestPlayer = nil
    local shortestDist = math.huge
    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -197,7 +199,7 @@ local function isTargetBlocking()
          end
       end
    end
-   return false
+      return false
 end
 
 -- SIRTA IŞINLANMA
@@ -240,7 +242,6 @@ end
 
 -- RENDERSTEPPED DÖNGÜSÜ
 RunService.RenderStepped:Connect(function()
-   -- Hitbox Güncelleme (Ölü olunsa da çalışır)
    if hitboxToggle then
       for _, player in ipairs(Players:GetPlayers()) do
          if player ~= LocalPlayer and player.Character then
@@ -263,12 +264,10 @@ RunService.RenderStepped:Connect(function()
    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
    local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
 
-   -- 1. TWIN SPEED
    if twinSpeedToggle and hum then
       hum.WalkSpeed = twinSpeedValue
    end
 
-   -- 2. %15 CAN KORUMASI
    if healthSafetyToggle and hum and myRoot then
       local hpPercent = (hum.Health / hum.MaxHealth) * 100
 
@@ -280,13 +279,11 @@ RunService.RenderStepped:Connect(function()
       end
    end
 
-   -- 3. LOCK BEHIND
-   if autoBehindLock and not isEscapeActive and not autoAttackLoop then
+   if autoBehindLock and not isEscapeActive and not autoAttackLoop and not yujiComboToggle then
       tpBehindTarget()
    end
 
-   -- 4. AIMBOT
-   if (aimbotToggle or autoAttackLoop) and not isEscapeActive then
+   if (aimbotToggle or autoAttackLoop or yujiComboToggle) and not isEscapeActive then
       local target = updateAndGetTarget()
       if target and isPlayerAlive(target) then
          local head = target.Character:FindFirstChild("Head") or target.Character:FindFirstChild("HumanoidRootPart")
@@ -297,7 +294,67 @@ RunService.RenderStepped:Connect(function()
    end
 end)
 
--- AUTO G (AWAKENING / ULTIMATE DÖNGÜSÜ)
+-- YUJI SPECIAL COMBO LOOP
+task.spawn(function()
+   while true do
+      if yujiComboToggle and not isEscapeActive and isLocalPlayerAlive() then
+         local target = updateAndGetTarget()
+
+         if target and isPlayerAlive(target) then
+            tpBehindTarget()
+
+            -- 1. Blok Kontrolü
+            if autoGuardBreakToggle and isTargetBlocking() then
+               clickM2()
+               task.wait(0.1)
+            end
+
+            -- 2. 3x M1 Vuruşu
+            for i = 1, 3 do
+               if not yujiComboToggle or not isLocalPlayerAlive() or not isPlayerAlive(target) then break end
+               tpBehindTarget()
+               clickM1()
+               task.wait(m1Delay)
+            end
+
+            -- 3. Cursed Strikes (1)
+            if yujiComboToggle and isLocalPlayerAlive() and isPlayerAlive(target) then
+               tpBehindTarget()
+               pressKey(Enum.KeyCode.One, 0.05)
+               task.wait(yujiSkillDelay)
+            end
+
+            -- 4. Divergent Fist (2)
+            if yujiComboToggle and isLocalPlayerAlive() and isPlayerAlive(target) then
+               tpBehindTarget()
+               pressKey(Enum.KeyCode.Two, 0.05)
+               task.wait(yujiSkillDelay)
+            end
+
+            -- 5. Crushing Blow (3)
+            if yujiComboToggle and isLocalPlayerAlive() and isPlayerAlive(target) then
+               tpBehindTarget()
+               pressKey(Enum.KeyCode.Three, 0.05)
+               task.wait(yujiSkillDelay)
+            end
+
+            -- 6. Black Flash / Final Hit (4)
+            if yujiComboToggle and isLocalPlayerAlive() and isPlayerAlive(target) then
+               tpBehindTarget()
+               pressKey(Enum.KeyCode.Four, 0.05)
+               task.wait(yujiSkillDelay)
+            end
+
+         else
+            task.wait(0.1)
+         end
+      else
+         task.wait(0.1)
+      end
+   end
+end)
+
+-- AUTO G
 task.spawn(function()
    while true do
       if autoGToggle and not isEscapeActive and isLocalPlayerAlive() then
@@ -331,10 +388,10 @@ task.spawn(function()
    end
 end)
 
--- AKILLI SALDIRI DÖNGÜSÜ
+-- GENEL SALDIRI DÖNGÜSÜ
 task.spawn(function()
    while true do
-      if autoAttackLoop and not isEscapeActive and isLocalPlayerAlive() then
+      if autoAttackLoop and not yujiComboToggle and not isEscapeActive and isLocalPlayerAlive() then
          local target = updateAndGetTarget()
 
          if target and isPlayerAlive(target) then
@@ -381,6 +438,32 @@ task.spawn(function()
 end)
 
 -- UI ELEMANLARI (TAB 1: Auto Combat)
+
+MainTab:CreateSection("Yuji Itadori Özel Kombo")
+
+MainTab:CreateToggle({
+   Name = "Yuji Auto Combo (3x M1 -> 1 -> 2 -> 3 -> 4)",
+   CurrentValue = false,
+   Flag = "YujiComboFlag",
+   Callback = function(Value)
+      yujiComboToggle = Value
+      if Value then
+         autoAttackLoop = false -- Genel oto saldırıyı çakışmaması için kapatır
+      end
+   end,
+})
+
+MainTab:CreateSlider({
+   Name = "Yuji Yetenek Bekleme Süresi (Sn)",
+   Range = {0.1, 1},
+   Increment = 0.05,
+   Suffix = " sn",
+   CurrentValue = 0.35,
+   Flag = "YujiDelaySlider",
+   Callback = function(Value)
+      yujiSkillDelay = Value
+   end,
+})
 
 MainTab:CreateSection("Hitbox Ayarları")
 
@@ -483,12 +566,13 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
-   Name = "Tam Otomatik Savaş (Kombo + M1 + Otomatik Yeni Hedef)",
+   Name = "Genel Auto Combat",
    CurrentValue = false,
    Flag = "AutoAttackLoopFlag",
    Callback = function(Value)
       autoAttackLoop = Value
       if Value then
+         yujiComboToggle = false
          currentTargetPlayer = nil
          updateAndGetTarget()
       end
