@@ -3,9 +3,25 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({
    Name = "Jujutsu Shenanigans",
    LoadingTitle = "Loading. . .",
-   LoadingSubtitle = "kainatbozan",
+   LoadingSubtitle = "kainatbozanv2",
    ConfigurationSaving = { Enabled = false }
 })
+
+-- RAYFIELD GUI SÜRÜKLEME DÜZELTMESİ
+task.spawn(function()
+   task.wait(1)
+   local coreGui = game:GetService("CoreGui")
+   local rayfieldGui = coreGui:FindFirstChild("Rayfield") or game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("Rayfield")
+   
+   if rayfieldGui then
+      for _, desc in ipairs(rayfieldGui:GetDescendants()) do
+         if desc:IsA("Frame") and desc.Name == "Main" then
+            desc.Active = true
+            desc.Selectable = false
+         end
+      end
+   end
+end)
 
 local MainTab = Window:CreateTab("Auto Combat", 4483362458)
 local SafetyTab = Window:CreateTab("Güvenlik & Blok", 4483362458)
@@ -26,6 +42,7 @@ local twinSpeedValue = 200
 local m1Count = 4
 local comboDelay = 0.20
 local m1Delay = 0.10
+local gDelay = 2.0 -- Auto G basma aralığı (Saniye)
 
 local autoAttackLoop = false
 local standaloneAutoM1 = false
@@ -35,6 +52,7 @@ local healthSafetyToggle = false
 local autoGuardBreakToggle = true
 local aimbotToggle = false
 local twinSpeedToggle = false
+local autoGToggle = false -- Auto G Aç/Kapat
 
 local isEscapeActive = false
 local currentTargetPlayer = nil
@@ -89,11 +107,10 @@ LocalPlayer.CharacterAdded:Connect(function(char)
    currentTargetPlayer = nil
    isEscapeActive = false
    
-   -- Karakterin ve kök parçanın yüklenmesini bekle
    local root = char:WaitForChild("HumanoidRootPart", 5)
    local hum = char:WaitForChild("Humanoid", 5)
    
-   task.wait(1) -- Tam doğma koruması
+   task.wait(1)
    isRespawning = false
 end)
 
@@ -165,7 +182,7 @@ local function isTargetBlocking()
    return false
 end
 
--- SIRTA IŞINLANMA (GÜVENLİ)
+-- SIRTA IŞINLANMA
 local function tpBehindTarget()
    if isEscapeActive or not isLocalPlayerAlive() then return end
 
@@ -190,15 +207,17 @@ local function pressKey(keyCode, holdTime)
 end
 
 local function clickM1()
-   VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+   local vp = Camera.ViewportSize
+   VirtualInputManager:SendMouseButtonEvent(vp.X / 2, vp.Y / 2, 0, true, game, 0)
    task.wait(0.02)
-   VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+   VirtualInputManager:SendMouseButtonEvent(vp.X / 2, vp.Y / 2, 0, false, game, 0)
 end
 
 local function clickM2()
-   VirtualInputManager:SendMouseButtonEvent(0, 0, 1, true, game, 0)
+   local vp = Camera.ViewportSize
+   VirtualInputManager:SendMouseButtonEvent(vp.X / 2, vp.Y / 2, 1, true, game, 0)
    task.wait(0.04)
-   VirtualInputManager:SendMouseButtonEvent(0, 0, 1, false, game, 0)
+   VirtualInputManager:SendMouseButtonEvent(vp.X / 2, vp.Y / 2, 1, false, game, 0)
 end
 
 -- RENDERSTEPPED DÖNGÜSÜ
@@ -240,6 +259,16 @@ RunService.RenderStepped:Connect(function()
             Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, head.Position)
          end
       end
+   end
+end)
+
+-- AUTO G (AWAKENING / ULTIMATE DÖNGÜSÜ)
+task.spawn(function()
+   while true do
+      if autoGToggle and not isEscapeActive and isLocalPlayerAlive() then
+         pressKey(Enum.KeyCode.G, 0.1)
+      end
+      task.wait(gDelay)
    end
 end)
 
@@ -326,6 +355,15 @@ MainTab:CreateInput({
       targetPlayerName = Text
       currentTargetPlayer = nil
       useRandomTarget = (Text == "")
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "Otomatik G Bas (Auto Awakening/Ultimate)",
+   CurrentValue = false,
+   Flag = "AutoGToggleFlag",
+   Callback = function(Value)
+      autoGToggle = Value
    end,
 })
 
@@ -418,6 +456,18 @@ SafetyTab:CreateToggle({
 })
 
 SafetyTab:CreateSection("Ayar & Gecikmeler")
+
+SafetyTab:CreateSlider({
+   Name = "Auto G Basma Sıklığı (Sn)",
+   Range = {0.5, 10},
+   Increment = 0.5,
+   Suffix = " sn",
+   CurrentValue = 2.0,
+   Flag = "GDelaySlider",
+   Callback = function(Value)
+      gDelay = Value
+   end,
+})
 
 SafetyTab:CreateSlider({
    Name = "Twin Speed Hız Değeri",
