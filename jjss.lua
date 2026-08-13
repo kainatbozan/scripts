@@ -22,7 +22,7 @@ local Camera = Workspace.CurrentCamera
 local targetPlayerName = ""
 local useRandomTarget = true
 local behindDistance = 2.5
-local twinSpeedValue = 200 -- İstenen 200 Hızı
+local twinSpeedValue = 200
 local m1Count = 4
 local comboDelay = 0.20
 local m1Delay = 0.10
@@ -38,8 +38,33 @@ local twinSpeedToggle = false
 
 local isEscapeActive = false
 local currentTargetPlayer = nil
+local isRespawning = false
 
--- KESİN CANLILIK KONTROLÜ
+-- KENDİ KARAKTERİNİN CANLI OLUP OLMADIĞINI BİLDİREN KONTROL
+local function isLocalPlayerAlive()
+   if isRespawning then return false end
+   local char = LocalPlayer.Character
+   if not char or not char:IsDescendantOf(Workspace) then return false end
+
+   local hum = char:FindFirstChildOfClass("Humanoid")
+   local root = char:FindFirstChild("HumanoidRootPart")
+
+   if not hum or not root then return false end
+   if hum.Health <= 0 then return false end
+
+   if char:FindFirstChild("Knocked") or char:FindFirstChild("Ragdoll") or char:FindFirstChild("Dead") then
+      return false
+   end
+
+   local state = hum:GetState()
+   if state == Enum.HumanoidStateType.Dead or state == Enum.HumanoidStateType.Physics then
+      return false
+   end
+
+   return true
+end
+
+-- RAKİP CANLILIK KONTROLÜ
 local function isPlayerAlive(player)
    if not player or not player.Parent then return false end
    local char = player.Character
@@ -58,8 +83,24 @@ local function isPlayerAlive(player)
    return true
 end
 
+-- ÖLÜM VE YENİDEN DOĞMA YÖNETİMİ
+LocalPlayer.CharacterAdded:Connect(function(char)
+   isRespawning = true
+   currentTargetPlayer = nil
+   isEscapeActive = false
+   
+   -- Karakterin ve kök parçanın yüklenmesini bekle
+   local root = char:WaitForChild("HumanoidRootPart", 5)
+   local hum = char:WaitForChild("Humanoid", 5)
+   
+   task.wait(1) -- Tam doğma koruması
+   isRespawning = false
+end)
+
 -- DİNAMİK HEDEF SEÇİCİ
 local function updateAndGetTarget()
+   if not isLocalPlayerAlive() then return nil end
+
    if isPlayerAlive(currentTargetPlayer) then
       return currentTargetPlayer
    end
@@ -124,9 +165,9 @@ local function isTargetBlocking()
    return false
 end
 
--- SIRTA IŞINLANMA
+-- SIRTA IŞINLANMA (GÜVENLİ)
 local function tpBehindTarget()
-   if isEscapeActive then return end
+   if isEscapeActive or not isLocalPlayerAlive() then return end
 
    local target = updateAndGetTarget()
    local myChar = LocalPlayer.Character
@@ -160,19 +201,21 @@ local function clickM2()
    VirtualInputManager:SendMouseButtonEvent(0, 0, 1, false, game, 0)
 end
 
--- RENDERSTEPPED (HER KAREDE HIZ, IŞINLANMA, AIMBOT, CAN KORUMASI)
+-- RENDERSTEPPED DÖNGÜSÜ
 RunService.RenderStepped:Connect(function()
+   if not isLocalPlayerAlive() then return end
+
    local myChar = LocalPlayer.Character
    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
    local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
 
-   -- 1. TWIN SPEED (200 HIZ MOTORU)
-   if twinSpeedToggle and hum and hum.Health > 0 then
+   -- 1. TWIN SPEED
+   if twinSpeedToggle and hum then
       hum.WalkSpeed = twinSpeedValue
    end
 
    -- 2. %15 CAN KORUMASI
-   if healthSafetyToggle and hum and myRoot and hum.Health > 0 then
+   if healthSafetyToggle and hum and myRoot then
       local hpPercent = (hum.Health / hum.MaxHealth) * 100
 
       if hpPercent <= 15 then
@@ -203,7 +246,7 @@ end)
 -- AUTO BLOCK
 task.spawn(function()
    while true do
-      if autoBlockToggle and not isEscapeActive then
+      if autoBlockToggle and not isEscapeActive and isLocalPlayerAlive() then
          VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
       end
       task.wait(0.1)
@@ -213,7 +256,7 @@ end)
 -- BAĞIMSIZ AUTO M1
 task.spawn(function()
    while true do
-      if standaloneAutoM1 and not isEscapeActive then
+      if standaloneAutoM1 and not isEscapeActive and isLocalPlayerAlive() then
          if autoGuardBreakToggle and isTargetBlocking() then
             clickM2()
          else
@@ -227,7 +270,7 @@ end)
 -- AKILLI SALDIRI DÖNGÜSÜ
 task.spawn(function()
    while true do
-      if autoAttackLoop and not isEscapeActive then
+      if autoAttackLoop and not isEscapeActive and isLocalPlayerAlive() then
          local target = updateAndGetTarget()
 
          if target and isPlayerAlive(target) then
@@ -241,7 +284,7 @@ task.spawn(function()
 
             local keys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four}
             for _, key in ipairs(keys) do
-               if not autoAttackLoop or isEscapeActive or not isPlayerAlive(currentTargetPlayer) then break end
+               if not autoAttackLoop or isEscapeActive or not isLocalPlayerAlive() or not isPlayerAlive(currentTargetPlayer) then break end
                tpBehindTarget()
 
                if autoGuardBreakToggle and isTargetBlocking() then
@@ -254,7 +297,7 @@ task.spawn(function()
             end
 
             for i = 1, m1Count do
-               if not autoAttackLoop or isEscapeActive or not isPlayerAlive(currentTargetPlayer) then break end
+               if not autoAttackLoop or isEscapeActive or not isLocalPlayerAlive() or not isPlayerAlive(currentTargetPlayer) then break end
                tpBehindTarget()
 
                if autoGuardBreakToggle and isTargetBlocking() then
@@ -294,7 +337,7 @@ MainTab:CreateToggle({
       twinSpeedToggle = Value
       if not Value then
          local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-         if hum then hum.WalkSpeed = 16 end -- Varsayılan hıza dön
+         if hum then hum.WalkSpeed = 16 end
       end
    end,
 })
